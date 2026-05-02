@@ -18,7 +18,11 @@ def test_healthz_reports_running_app() -> None:
     assert body["database"] == {"status": "not_configured", "checked": False}
 
 
-def test_healthz_reports_database_configuration_without_connecting() -> None:
+def test_healthz_reports_unreachable_database(monkeypatch) -> None:
+    def fail_check(settings: Settings) -> bool:
+        raise OSError("database unavailable")
+
+    monkeypatch.setattr("oslo_newcomer_rag.main.check_database", fail_check)
     app = create_app(
         Settings(
             app_env="test",
@@ -30,4 +34,24 @@ def test_healthz_reports_database_configuration_without_connecting() -> None:
     response = client.get("/healthz")
 
     assert response.status_code == 200
-    assert response.json()["database"] == {"status": "configured", "checked": False}
+    body = response.json()
+    assert body["status"] == "degraded"
+    assert body["database"] == {"status": "unreachable", "checked": True}
+
+
+def test_healthz_reports_reachable_database(monkeypatch) -> None:
+    monkeypatch.setattr("oslo_newcomer_rag.main.check_database", lambda settings: True)
+    app = create_app(
+        Settings(
+            app_env="test",
+            database_url="postgresql+psycopg://user:pass@localhost:5432/oslo_newcomer",
+        )
+    )
+    client = TestClient(app)
+
+    response = client.get("/healthz")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "ok"
+    assert body["database"] == {"status": "ok", "checked": True}
