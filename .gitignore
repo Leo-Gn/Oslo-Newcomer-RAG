@@ -1,0 +1,44 @@
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.python-version
+.venv
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Node and frontend builds
+node_modules/
+dist/
+build/
+.vite/
+coverage/
+playwright-report/
+test-results/
+
+# Logs and runtime files
+*.log
+logs/
+tmp/
+temp/
+
+# Local database and Docker volumes
+.postgres/
+postgres-data/
+pgdata/
+docker-data/
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
