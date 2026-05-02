@@ -1,0 +1,36 @@
+import pytest
+from pydantic import ValidationError
+
+from oslo_newcomer_rag.config import Settings
+
+
+def test_development_settings_do_not_require_secrets() -> None:
+    settings = Settings(app_env="development")
+
+    assert settings.app_env == "development"
+    assert settings.llm_api_key is None
+
+
+def test_production_settings_require_provider_and_database_config() -> None:
+    with pytest.raises(ValidationError) as exc_info:
+        Settings(app_env="production")
+
+    message = str(exc_info.value)
+    assert "DATABASE_URL" in message
+    assert "LLM_API_KEY" in message
+    assert "EMBEDDING_DIM" in message
+
+
+def test_production_settings_accept_required_values() -> None:
+    settings = Settings(
+        app_env="production",
+        database_url="postgresql+psycopg://user:pass@localhost:5432/oslo_newcomer",
+        llm_base_url="https://api.example.com/v1",
+        llm_api_key="test-key",
+        llm_model="chat-model",
+        embedding_model="embedding-model",
+        embedding_dim=1536,
+    )
+
+    assert settings.has_database_config is True
+
