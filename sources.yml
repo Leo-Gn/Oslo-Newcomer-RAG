@@ -1,0 +1,426 @@
+version: 1
+description: Static allowlist of official sources for the Oslo newcomer RAG demo.
+
+sources:
+  - id: udi-apply-overview
+    owner: UDI
+    url: https://www.udi.no/en/want-to-apply/
+    language: en
+    category: immigration
+    intended_coverage:
+      permit_paths:
+        - permit_overview
+      topics:
+        - application_navigation
+        - permit_categories
+
+  - id: udi-family-immigration
+    owner: UDI
+    url: https://www.udi.no/en/want-to-apply/family-immigration/
+    language: en
+    category: immigration
+    intended_coverage:
+      permit_paths:
+        - family_immigration
+      topics:
+        - family_reunification
+        - residence_card_family
+
+  - id: udi-work-immigration
+    owner: UDI
+    url: https://www.udi.no/en/want-to-apply/work-immigration/
+    language: en
+    category: immigration
+    intended_coverage:
+      permit_paths:
+        - work_immigration
+      topics:
+        - work_permit_overview
+        - employer_offer
+
+  - id: udi-skilled-workers
+    owner: UDI
+    url: https://www.udi.no/en/want-to-apply/work-immigration/skilled-workers/
+    language: en
+    category: immigration
+    intended_coverage:
+      permit_paths:
+        - skilled_worker
+      topics:
+        - skilled_worker_requirements
+        - early_employment_start
+
+  - id: udi-seasonal-workers
+    owner: UDI
+    url: https://www.udi.no/en/want-to-apply/work-immigration/seasonal-workers/
+    language: en
+    category: immigration
+    intended_coverage:
+      permit_paths:
+        - seasonal_worker
+      topics:
+        - seasonal_work
+        - employer_confirmation
+
+  - id: udi-studies
+    owner: UDI
+    url: https://www.udi.no/en/want-to-apply/studies/
+    language: en
+    category: immigration
+    intended_coverage:
+      permit_paths:
+        - study_permit
+      topics:
+        - student_residence
+        - study_work_rights
+
+  - id: udi-job-seekers
+    owner: UDI
+    url: https://www.udi.no/en/want-to-apply/work-immigration/job-seekers/
+    language: en
+    category: immigration
+    intended_coverage:
+      permit_paths:
+        - job_seeker
+      topics:
+        - graduate_job_search
+        - researcher_job_search
+
+  - id: udi-eu-eea
+    owner: UDI
+    url: https://www.udi.no/en/want-to-apply/residence-under-the-eueeu-regulations/
+    language: en
+    category: immigration
+    intended_coverage:
+      permit_paths:
+        - eu_eea_registration
+      topics:
+        - right_of_residence
+        - registration_certificate
+
+  - id: udi-visitor-visa
+    owner: UDI
+    url: https://www.udi.no/en/want-to-apply/visit-and-holiday/visitors-visa-to-norway/
+    language: en
+    category: immigration
+    intended_coverage:
+      permit_paths:
+        - visitor_visa
+      topics:
+        - short_stay
+        - schengen_visa
+
+  - id: udi-protection-asylum
+    owner: UDI
+    url: https://www.udi.no/en/want-to-apply/protection-asylum/
+    language: en
+    category: immigration
+    intended_coverage:
+      permit_paths:
+        - protection_asylum
+      topics:
+        - asylum_application
+        - collective_protection
+
+  - id: udi-permanent-residence
+    owner: UDI
+    url: https://www.udi.no/en/want-to-apply/permanent-residence/permanent-residence-permit/
+    language: en
+    category: immigration
+    intended_coverage:
+      permit_paths:
+        - permanent_residence
+      topics:
+        - residence_requirement
+        - permanent_rights
+
+  - id: udi-citizenship
+    owner: UDI
+    url: https://www.udi.no/en/want-to-apply/citizenship/
+    language: en
+    category: immigration
+    intended_coverage:
+      permit_paths:
+        - citizenship
+      topics:
+        - norwegian_citizenship
+        - dual_citizenship
+
+  - id: udi-residence-cards
+    owner: UDI
+    url: https://www.udi.no/en/word-definitions/-residence-cards/
+    language: en
+    category: immigration
+    intended_coverage:
+      permit_paths:
+        - residence_card
+      topics:
+        - residence_card_proof
+        - card_renewal
+
+  - id: skatteetaten-move-to-norway
+    owner: Skatteetaten
+    url: https://www.skatteetaten.no/en/person/national-registry/moving/to-Norway/
+    language: en
+    category: civil_registration
+    intended_coverage:
+      permit_paths: []
+      topics:
+        - report_move_to_norway
+        - population_register
+
+  - id: skatteetaten-residence-permit-registration
+    owner: Skatteetaten
+    url: https://www.skatteetaten.no/en/person/national-registry/moving/your-residence-permit-determines-whether-youll-be-automatically-considered-a-resident-in-norway/
+    language: en
+    category: civil_registration
+    intended_coverage:
+      permit_paths: []
+      topics:
+        - national_identity_number
+        - d_number
+        - automatic_residency_registration
+
+  - id: skatteetaten-identification-numbers
+    owner: Skatteetaten
+    url: https://www.skatteetaten.no/en/person/national-registry/identitetsnummer-og-elektronisk-id/
+    language: en
+    category: civil_registration
+    intended_coverage:
+      permit_paths: []
+      topics:
+        - national_identity_number
+        - d_number
+        - electronic_id
+
+  - id: skatteetaten-tax-deduction-card
+    owner: Skatteetaten
+    url: https://www.skatteetaten.no/en/person/taxes/tax-deduction-card-and-advance-tax/
+    language: en
+    category: tax
+    intended_coverage:
+      permit_paths: []
+      topics:
+        - tax_deduction_card
+        - foreign_worker_tax
+
+  - id: skatteetaten-tax-moving-to-norway
+    owner: Skatteetaten
+    url: https://www.skatteetaten.no/en/person/taxes/get-the-taxes-right/abroad/tax-when-you-move-to-norway/
+    language: en
+    category: tax
+    intended_coverage:
+      permit_paths: []
+      topics:
+        - tax_residence
+        - national_insurance_contribution
+
+  - id: nav-national-insurance
+    owner: NAV
+    url: https://www.nav.no/en/home/rules-and-regulations/membership-of-the-national-insurance-scheme
+    language: en
+    category: welfare
+    intended_coverage:
+      permit_paths: []
+      topics:
+        - national_insurance_scheme
+        - social_security_membership
+
+  - id: nav-non-eea-work
+    owner: NAV
+    url: https://www.nav.no/en/home/rules-and-regulations/relatert-informasjon/coming-from-a-country-outside-eu-eea-to-work-in-norway
+    language: en
+    category: welfare
+    intended_coverage:
+      permit_paths:
+        - work_immigration
+      topics:
+        - non_eea_worker_membership
+        - national_insurance_scheme
+
+  - id: nav-register-jobseeker
+    owner: NAV
+    url: https://www.nav.no/registrer-arbeidssoker/en
+    language: en
+    category: work
+    intended_coverage:
+      permit_paths:
+        - job_seeker
+      topics:
+        - register_jobseeker
+        - legal_residence_for_jobseekers
+
+  - id: sua-about
+    owner: SUA
+    url: https://www.sua.no/en/about-sua/
+    language: en
+    category: work
+    intended_coverage:
+      permit_paths:
+        - work_immigration
+        - eu_eea_registration
+      topics:
+        - service_centre_foreign_workers
+        - police_tax_udi_services
+
+  - id: sua-book-appointment
+    owner: SUA
+    url: https://www.sua.no/en/book-appointment/
+    language: en
+    category: work
+    intended_coverage:
+      permit_paths:
+        - work_immigration
+        - eu_eea_registration
+      topics:
+        - appointment_booking
+        - citizenship_groups
+
+  - id: sua-book-appointment-non-eea
+    owner: SUA
+    url: https://www.sua.no/en/book-appointment/non-eu-eea/
+    language: en
+    category: work
+    intended_coverage:
+      permit_paths:
+        - work_immigration
+        - residence_card
+      topics:
+        - non_eea_worker_appointment
+        - tax_card_documents
+        - report_move_to_norway
+
+  - id: sua-book-appointment-eu-eea
+    owner: SUA
+    url: https://www.sua.no/en/book-appointment/eu-eea/
+    language: en
+    category: work
+    intended_coverage:
+      permit_paths:
+        - eu_eea_registration
+      topics:
+        - eu_eea_worker_appointment
+        - registration_certificate
+        - tax_card_documents
+
+  - id: oslo-welcome
+    owner: Oslo kommune
+    url: https://www.oslo.kommune.no/english/welcome-to-oslo/
+    language: en
+    category: municipal_services
+    intended_coverage:
+      permit_paths: []
+      topics:
+        - newcomer_basics
+        - first_steps
+        - daily_life_oslo
+
+  - id: oslo-first-steps
+    owner: Oslo kommune
+    url: https://www.oslo.kommune.no/english/welcome-to-oslo/plan-and-prepare/
+    language: en
+    category: municipal_services
+    intended_coverage:
+      permit_paths: []
+      topics:
+        - first_steps
+        - register_arrival
+        - bank_account
+
+  - id: oslo-healthcare
+    owner: Oslo kommune
+    url: https://www.oslo.kommune.no/english/welcome-to-oslo/healthcare-welfare/healthcare-services/
+    language: en
+    category: municipal_services
+    intended_coverage:
+      permit_paths: []
+      topics:
+        - healthcare_oslo
+        - fastlege
+        - emergency_healthcare
+
+  - id: oslo-accommodation
+    owner: Oslo kommune
+    url: https://www.oslo.kommune.no/english/welcome-to-oslo/accommodation-in-oslo/
+    language: en
+    category: municipal_services
+    intended_coverage:
+      permit_paths: []
+      topics:
+        - housing_oslo
+        - renting
+        - utilities
+
+  - id: oslo-children-families
+    owner: Oslo kommune
+    url: https://www.oslo.kommune.no/english/welcome-to-oslo/children-families/
+    language: en
+    category: municipal_services
+    intended_coverage:
+      permit_paths: []
+      topics:
+        - children_families
+        - kindergarten
+        - school
+
+  - id: oslo-learn-norwegian
+    owner: Oslo kommune
+    url: https://www.oslo.kommune.no/english/welcome-to-oslo/learn-norwegian/
+    language: en
+    category: municipal_services
+    intended_coverage:
+      permit_paths: []
+      topics:
+        - learning_norwegian
+        - language_courses
+        - language_tests
+
+  - id: sio-about
+    owner: SiO
+    url: https://sio.no/en/about-sio
+    language: en
+    category: student_services
+    intended_coverage:
+      permit_paths:
+        - study_permit
+      topics:
+        - student_welfare
+        - semester_fee
+
+  - id: sio-student-housing
+    owner: SiO
+    url: https://bolig.sio.no/en/
+    language: en
+    category: student_services
+    intended_coverage:
+      permit_paths:
+        - study_permit
+      topics:
+        - student_housing
+        - housing_application
+        - move_in_student_housing
+
+  - id: sio-health
+    owner: SiO
+    url: https://sio.no/en/health
+    language: en
+    category: student_services
+    intended_coverage:
+      permit_paths:
+        - study_permit
+      topics:
+        - student_health
+        - gp_sio
+        - counselling
+
+  - id: sio-kindergarten
+    owner: SiO
+    url: https://sio.no/en/kindergarten
+    language: en
+    category: student_services
+    intended_coverage:
+      permit_paths:
+        - study_permit
+      topics:
+        - student_parent
+        - student_kindergarten
