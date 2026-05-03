@@ -55,3 +55,19 @@ def test_healthz_reports_reachable_database(monkeypatch) -> None:
     body = response.json()
     assert body["status"] == "ok"
     assert body["database"] == {"status": "ok", "checked": True}
+
+
+def test_sources_endpoint_does_not_require_live_fetching() -> None:
+    app = create_app(Settings(app_env="test"))
+    client = TestClient(app)
+
+    response = client.get("/api/sources")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body == {
+        "database_configured": False,
+        "total_sources": 0,
+        "total_chunks": 0,
+        "sources": [],
+    }
