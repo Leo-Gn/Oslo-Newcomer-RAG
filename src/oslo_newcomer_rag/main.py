@@ -1,15 +1,31 @@
 from importlib.metadata import PackageNotFoundError, version
 from datetime import datetime
+from typing import Literal
 
-from fastapi import FastAPI
-from pydantic import BaseModel
+import httpx
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from oslo_newcomer_rag.config import Settings, get_settings
 from oslo_newcomer_rag.db.models import Document, DocumentChunk, Source
-from oslo_newcomer_rag.db.session import create_engine_from_settings
-from oslo_newcomer_rag.db.session import check_database
+from oslo_newcomer_rag.db.session import check_database, create_engine_from_settings
+from oslo_newcomer_rag.generation import (
+    ChatConfigError,
+    ChatMessage as GenerationChatMessage,
+    ChatResponseError,
+    DataCurrency,
+    GroundedAnswer,
+    OpenAICompatibleChatClient,
+    build_grounded_answer,
+)
+from oslo_newcomer_rag.retrieval import (
+    EmbeddingConfigError,
+    OpenAICompatibleEmbeddingClient,
+    RetrievalFilters,
+    retrieve_chunks,
+)
 from oslo_newcomer_rag.sources import load_source_registry
 
 
@@ -42,6 +58,42 @@ class SourceSnapshotResponse(BaseModel):
     total_sources: int
     total_chunks: int
     sources: list[StoredSource]
+
+
+class ChatHistoryMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=2000)
+
+
+class ChatRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=2000)
+    ui_language: Literal["en", "no"] = "en"
+    session_history: list[ChatHistoryMessage] = Field(default_factory=list, max_length=12)
+
+
+class ChatCitation(BaseModel):
+    citation_id: str
+    chunk_id: str
+    source_owner: str
+    source_url: str
+    section_url: str
+    section_heading: str
+    collected_at: datetime
+    official_last_updated_at: datetime | None
+
+
+class ChatDataCurrency(BaseModel):
+    collected_at: datetime | None
+    official_last_updated_at: datetime | None
+
+
+class ChatResponse(BaseModel):
+    answer_id: str
+    answer: str
+    refused: bool
+    disclaimer: str | None
+    citations: list[ChatCitation]
+    data_currency: ChatDataCurrency
 
 
 def package_version() -> str:
@@ -122,6 +174,49 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             sources=source_rows,
         )
 
+    @api.post("/api/chat", response_model=ChatResponse, tags=["chat"])
+    async def chat(request: ChatRequest) -> ChatResponse:
+        if not app_settings.has_database_config:
+            raise HTTPException(status_code=503, detail="DATABASE_URL is not configured")
+
+        engine = create_engine_from_settings(app_settings)
+        embedder: OpenAICompatibleEmbeddingClient | None = None
+        chat_client: OpenAICompatibleChatClient | None = None
+        try:
+            embedder = OpenAICompatibleEmbeddingClient(app_settings)
+            chat_client = OpenAICompatibleChatClient(app_settings)
+            with Session(engine) as session:
+                retrieval = retrieve_chunks(
+                    session,
+                    embedder,
+                    request.question,
+                    filters=RetrievalFilters(language=request.ui_language),
+                )
+                answer = build_grounded_answer(
+                    question=request.question,
+                    ui_language=request.ui_language,
+                    retrieval=retrieval,
+                    chat_client=chat_client,
+                    session_history=[
+                        GenerationChatMessage(role=message.role, content=message.content)
+                        for message in request.session_history
+                    ],
+                )
+        except (ChatConfigError, EmbeddingConfigError, ValueError) as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except ChatResponseError as exc:
+            raise HTTPException(status_code=502, detail="Model provider returned an invalid answer") from exc
+        except httpx.HTTPError as exc:
+            raise HTTPException(status_code=502, detail="Model provider request failed") from exc
+        finally:
+            if embedder:
+                embedder.close()
+            if chat_client:
+                chat_client.close()
+            engine.dispose()
+
+        return _chat_response(answer)
+
     return api
 
 
@@ -148,4 +243,34 @@ def _stored_source_response(session: Session, source: Source) -> StoredSource:
         collected_at=latest_document.collected_at if latest_document else None,
         official_last_updated_at=latest_document.official_last_updated_at if latest_document else None,
         chunk_count=chunk_count or 0,
+    )
+
+
+def _chat_response(answer: GroundedAnswer) -> ChatResponse:
+    return ChatResponse(
+        answer_id=answer.answer_id,
+        answer=answer.answer,
+        refused=answer.refused,
+        disclaimer=answer.disclaimer,
+        citations=[
+            ChatCitation(
+                citation_id=citation.citation_id,
+                chunk_id=citation.chunk_id,
+                source_owner=citation.source_owner,
+                source_url=citation.source_url,
+                section_url=citation.section_url,
+                section_heading=citation.section_heading,
+                collected_at=citation.collected_at,
+                official_last_updated_at=citation.official_last_updated_at,
+            )
+            for citation in answer.citations
+        ],
+        data_currency=_chat_data_currency(answer.data_currency),
+    )
+
+
+def _chat_data_currency(data_currency: DataCurrency) -> ChatDataCurrency:
+    return ChatDataCurrency(
+        collected_at=data_currency.collected_at,
+        official_last_updated_at=data_currency.official_last_updated_at,
     )

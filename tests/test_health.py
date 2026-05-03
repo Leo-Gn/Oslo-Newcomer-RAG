@@ -71,3 +71,16 @@ def test_sources_endpoint_does_not_require_live_fetching() -> None:
         "total_chunks": 0,
         "sources": [],
     }
+
+
+def test_chat_endpoint_requires_configured_database() -> None:
+    app = create_app(Settings(app_env="test"))
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/chat",
+        json={"question": "What should I do after moving to Oslo?", "ui_language": "en"},
+    )
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "DATABASE_URL is not configured"
