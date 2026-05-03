@@ -9,7 +9,6 @@ from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
-from urllib.parse import urlparse
 
 import httpx
 from sqlalchemy import Select, delete, func, or_, select
@@ -28,7 +27,6 @@ MIN_VECTOR_ONLY_SIMILARITY = 0.55
 DEFAULT_BATCH_SIZE = 8
 DEFAULT_CANDIDATE_LIMIT = 40
 DEFAULT_RESULT_LIMIT = 6
-DEFAULT_NATIVE_REQUEST_INTERVAL_SECONDS = 0.35
 MAX_EMBEDDING_RETRY_ATTEMPTS = 6
 INITIAL_RETRY_SECONDS = 2.0
 MAX_RETRY_SECONDS = 60.0
@@ -98,7 +96,6 @@ class OpenAICompatibleEmbeddingClient:
         client: httpx.Client | None = None,
         timeout: float = 60.0,
         sleep: Callable[[float], None] = time.sleep,
-        native_request_interval_seconds: float = DEFAULT_NATIVE_REQUEST_INTERVAL_SECONDS,
     ) -> None:
         if not settings.llm_base_url:
             raise EmbeddingConfigError("LLM_BASE_URL is not configured")
@@ -116,7 +113,6 @@ class OpenAICompatibleEmbeddingClient:
         self._owned_client = client is None
         self.client = client or httpx.Client(timeout=timeout)
         self._sleep = sleep
-        self.native_request_interval_seconds = native_request_interval_seconds
 
     def close(self) -> None:
         if self._owned_client:
@@ -141,45 +137,12 @@ class OpenAICompatibleEmbeddingClient:
             json=payload,
         )
 
-        if response.status_code >= 400 and self._is_google_gemini_config():
-            return self._embed_with_gemini_native_endpoint(texts, task=task)
-
         response.raise_for_status()
-        try:
-            vectors = self._parse_openai_embedding_response(response.json(), expected_count=len(texts))
-            return [self._prepare_vector(vector) for vector in vectors]
-        except EmbeddingResponseError:
-            if self._is_google_gemini_config():
-                return self._embed_with_gemini_native_endpoint(texts, task=task)
-            raise
+        vectors = self._parse_openai_embedding_response(response.json(), expected_count=len(texts))
+        return [self._prepare_vector(vector) for vector in vectors]
 
     def embed_query(self, query: str) -> list[float]:
         return self.embed_texts([query], task="RETRIEVAL_QUERY")[0]
-
-    def _embed_with_gemini_native_endpoint(self, texts: Sequence[str], *, task: str) -> list[list[float]]:
-        endpoint = _gemini_native_embedding_endpoint(self.base_url, self.model)
-        vectors: list[list[float]] = []
-        for index, text in enumerate(texts):
-            response = self._post_with_retries(
-                endpoint,
-                headers={
-                    "x-goog-api-key": self.api_key,
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "content": {"parts": [{"text": text}]},
-                    "task_type": task,
-                    "output_dimensionality": self.embedding_dim,
-                },
-            )
-            response.raise_for_status()
-            vector = response.json().get("embedding", {}).get("values")
-            if not isinstance(vector, list):
-                raise EmbeddingResponseError("Embedding response did not contain embedding.values")
-            vectors.append(self._prepare_vector(vector))
-            if self.native_request_interval_seconds > 0 and index < len(texts) - 1:
-                self._sleep(self.native_request_interval_seconds)
-        return vectors
 
     def _post_with_retries(
         self,
@@ -223,10 +186,6 @@ class OpenAICompatibleEmbeddingClient:
                 f"Expected {self.embedding_dim} embedding dimensions, received {len(vector)}"
             )
         return normalize_vector([float(value) for value in vector])
-
-    def _is_google_gemini_config(self) -> bool:
-        host = (urlparse(self.base_url).hostname or "").lower()
-        return "googleapis.com" in host and self.model.startswith("gemini-")
 
 
 def normalize_vector(vector: Sequence[float]) -> list[float]:
@@ -513,12 +472,6 @@ def _hash_query(query: str) -> str:
     return hashlib.sha256(query.casefold().encode("utf-8")).hexdigest()
 
 
-def _gemini_native_embedding_endpoint(base_url: str, model: str) -> str:
-    parsed = urlparse(base_url)
-    root = f"{parsed.scheme}://{parsed.netloc}"
-    return f"{root}/v1beta/models/{model}:embedContent"
-
-
 def _retry_delay(response: httpx.Response, attempt: int) -> float:
     retry_after = response.headers.get("retry-after")
     if retry_after:
@@ -535,13 +488,9 @@ def build_embeddings_from_settings(
     *,
     limit: int | None = None,
     batch_size: int = DEFAULT_BATCH_SIZE,
-    native_request_interval_seconds: float = DEFAULT_NATIVE_REQUEST_INTERVAL_SECONDS,
 ) -> EmbeddingBatchResult:
     engine = create_engine_from_settings(settings)
-    embedder = OpenAICompatibleEmbeddingClient(
-        settings,
-        native_request_interval_seconds=native_request_interval_seconds,
-    )
+    embedder = OpenAICompatibleEmbeddingClient(settings)
     try:
         with Session(engine) as session:
             return build_missing_embeddings(session, embedder, limit=limit, batch_size=batch_size)
@@ -571,19 +520,12 @@ def embeddings_main() -> None:
     parser = argparse.ArgumentParser(description="Create or refresh embeddings for stored source chunks.")
     parser.add_argument("--limit", type=int, default=None, help="Only embed this many chunks.")
     parser.add_argument("--batch-size", type=int, default=DEFAULT_BATCH_SIZE, help="Chunks to embed per commit.")
-    parser.add_argument(
-        "--request-interval",
-        type=float,
-        default=DEFAULT_NATIVE_REQUEST_INTERVAL_SECONDS,
-        help="Seconds to wait between Gemini native embedding requests.",
-    )
     args = parser.parse_args()
 
     result = build_embeddings_from_settings(
         get_settings(),
         limit=args.limit,
         batch_size=args.batch_size,
-        native_request_interval_seconds=args.request_interval,
     )
     print(json.dumps(result.__dict__, indent=2))
 

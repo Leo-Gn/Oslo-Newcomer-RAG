@@ -47,61 +47,41 @@ def test_embedding_request_uses_configured_dimension_and_normalizes_vector() -> 
     assert vector == [0.6, 0.8, 0.0]
 
 
-def test_gemini_fallback_requests_output_dimensionality_when_openai_compat_fails() -> None:
-    seen_native_payloads: list[dict] = []
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path.endswith("/openai/embeddings"):
-            return httpx.Response(400, json={"error": {"message": "unsupported dimensions"}})
-
-        seen_native_payloads.append(json.loads(request.content))
-        return httpx.Response(200, json={"embedding": {"values": [0.0, 5.0, 0.0]}})
-
-    client = OpenAICompatibleEmbeddingClient(
-        _settings(
-            llm_base_url="https://generativelanguage.googleapis.com/v1beta/openai",
-            embedding_model="gemini-embedding-001",
-            embedding_dim=3,
-        ),
-        client=httpx.Client(transport=httpx.MockTransport(handler)),
-    )
-
-    vector = client.embed_texts(["renew a residence card"], task="RETRIEVAL_DOCUMENT")[0]
-
-    assert seen_native_payloads[0]["output_dimensionality"] == 3
-    assert seen_native_payloads[0]["task_type"] == "RETRIEVAL_DOCUMENT"
-    assert vector == [0.0, 1.0, 0.0]
-
-
-def test_embedding_client_retries_rate_limited_gemini_requests() -> None:
-    native_calls = 0
+def test_embedding_client_retries_rate_limited_requests() -> None:
+    calls = 0
     sleeps: list[float] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
-        nonlocal native_calls
-        if request.url.path.endswith("/openai/embeddings"):
-            return httpx.Response(400, json={"error": {"message": "unsupported dimensions"}})
-
-        native_calls += 1
-        if native_calls == 1:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
             return httpx.Response(429, headers={"retry-after": "0.25"}, json={"error": "slow down"})
-        return httpx.Response(200, json={"embedding": {"values": [1.0, 0.0, 0.0]}})
+
+        payload = json.loads(request.content)
+        assert payload["dimensions"] == 3
+        return httpx.Response(
+            200,
+            json={
+                "data": [
+                    {
+                        "index": 0,
+                        "embedding": [0.0, 5.0, 0.0],
+                    }
+                ]
+            },
+        )
 
     client = OpenAICompatibleEmbeddingClient(
-        _settings(
-            llm_base_url="https://generativelanguage.googleapis.com/v1beta/openai",
-            embedding_model="gemini-embedding-001",
-            embedding_dim=3,
-        ),
+        _settings(embedding_dim=3),
         client=httpx.Client(transport=httpx.MockTransport(handler)),
         sleep=sleeps.append,
     )
 
     vector = client.embed_texts(["renew a residence card"], task="RETRIEVAL_DOCUMENT")[0]
 
-    assert native_calls == 2
+    assert calls == 2
     assert sleeps == [0.25]
-    assert vector == [1.0, 0.0, 0.0]
+    assert vector == [0.0, 1.0, 0.0]
 
 
 def test_non_default_embedding_sizes_are_normalized_before_storage_or_scoring() -> None:
