@@ -3,14 +3,14 @@ import {
   BookOpen,
   CheckCircle2,
   Clock,
-  Database,
   ExternalLink,
   Globe2,
   Loader2,
+  RotateCcw,
   Send,
   ShieldAlert
 } from "lucide-react";
-import { FormEvent, KeyboardEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, KeyboardEvent, MouseEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import { askQuestion, fetchSourceSnapshot } from "./api";
 import type { ChatHistoryMessage, ChatTurn, SourceSnapshot, UiLanguage } from "./types";
@@ -28,13 +28,12 @@ const text = {
     placeholder: "Ask about UDI, NAV, tax, Oslo services, SUA, or SiO",
     send: "Send",
     thinking: "Checking sources",
-    snapshot: "Static source snapshot",
     chatTitle: "New conversation",
     prompts: "Suggested questions",
     sources: "sources",
-    chunks: "chunks",
-    collected: "Collected",
-    updated: "Updated",
+    clear: "Clear chat",
+    reset: "Start over",
+    dataUpdated: "Updated data",
     unavailable: "Source snapshot unavailable",
     noDate: "not listed",
     citations: "Sources",
@@ -59,13 +58,12 @@ const text = {
     placeholder: "Spør om UDI, NAV, skatt, Oslo-tjenester, SUA eller SiO",
     send: "Send",
     thinking: "Sjekker kilder",
-    snapshot: "Statisk kildeutdrag",
     chatTitle: "Ny samtale",
     prompts: "Forslag",
     sources: "kilder",
-    chunks: "tekstbiter",
-    collected: "Hentet",
-    updated: "Oppdatert",
+    clear: "Tøm chat",
+    reset: "Start på nytt",
+    dataUpdated: "Oppdaterte data",
     unavailable: "Kildeutdrag er ikke tilgjengelig",
     noDate: "ikke oppgitt",
     citations: "Kilder",
@@ -88,9 +86,12 @@ function App() {
   const [snapshotError, setSnapshotError] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const composerRef = useRef<HTMLTextAreaElement | null>(null);
+  const messageStageRef = useRef<HTMLDivElement | null>(null);
 
   const copy = text[language];
   const history = useMemo(() => buildHistory(turns), [turns]);
+  const dataUpdatedAt = useMemo(() => latestUpdateDate(snapshot, turns), [snapshot, turns]);
 
   useEffect(() => {
     let active = true;
@@ -112,6 +113,13 @@ function App() {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    messageStageRef.current?.scrollTo({
+      top: messageStageRef.current.scrollHeight,
+      behavior: "smooth"
+    });
+  }, [turns, loading]);
 
   async function submitQuestion(prompt: string) {
     const trimmed = prompt.trim();
@@ -137,7 +145,15 @@ function App() {
       setError(err instanceof Error ? err.message : copy.error);
     } finally {
       setLoading(false);
+      requestAnimationFrame(() => composerRef.current?.focus());
     }
+  }
+
+  function clearChat() {
+    setTurns([]);
+    setQuestion("");
+    setError(null);
+    requestAnimationFrame(() => composerRef.current?.focus());
   }
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
@@ -146,29 +162,34 @@ function App() {
   }
 
   function onComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
-    if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+    if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
       void submitQuestion(question);
     }
   }
 
+  function onMessageStageClick(event: MouseEvent<HTMLDivElement>) {
+    const target = event.target as HTMLElement;
+    if (target.closest("a,button")) {
+      return;
+    }
+    composerRef.current?.focus();
+  }
+
   return (
     <div className="app-shell">
       <header className="topbar">
-        <div className="window-dots" aria-hidden="true">
-          <span />
-          <span />
-          <span />
-        </div>
-
-        <div className="brand-block">
+        <button className="brand-block" type="button" onClick={clearChat} aria-label={copy.reset}>
           <p className="eyebrow">Oslo RAG demo</p>
           <h1>{copy.appName}</h1>
           <p>{copy.subtitle}</p>
-        </div>
+        </button>
 
         <div className="topbar-actions">
-          <SnapshotPill snapshot={snapshot} hasError={snapshotError} language={language} />
+          <button className="clear-button" type="button" onClick={clearChat}>
+            <RotateCcw aria-hidden="true" className="h-4 w-4" />
+            <span>{copy.clear}</span>
+          </button>
           <LanguageSwitch language={language} onChange={setLanguage} label={copy.language} />
         </div>
       </header>
@@ -185,24 +206,26 @@ function App() {
             </div>
           </div>
 
-          <div className="prompt-card">
-            <div className="prompt-title">{copy.prompts}</div>
-            <div className="prompt-strip" aria-label="Example prompts">
-              {copy.examples.map((example) => (
-                <button
-                  className="example-button"
-                  disabled={loading}
-                  key={example}
-                  type="button"
-                  onClick={() => void submitQuestion(example)}
-                >
-                  {example}
-                </button>
-              ))}
+          {turns.length === 0 ? (
+            <div className="prompt-card">
+              <div className="prompt-title">{copy.prompts}</div>
+              <div className="prompt-strip" aria-label="Example prompts">
+                {copy.examples.map((example) => (
+                  <button
+                    className="example-button"
+                    disabled={loading}
+                    key={example}
+                    type="button"
+                    onClick={() => void submitQuestion(example)}
+                  >
+                    {example}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          ) : null}
 
-          <div className="message-stage">
+          <div className="message-stage" onClick={onMessageStageClick} ref={messageStageRef}>
             {turns.length === 0 ? (
               <div className="empty-state">
                 <BookOpen aria-hidden="true" className="h-5 w-5" />
@@ -243,6 +266,7 @@ function App() {
               onChange={(event) => setQuestion(event.target.value)}
               onKeyDown={onComposerKeyDown}
               placeholder={copy.placeholder}
+              ref={composerRef}
               rows={3}
               value={question}
             />
@@ -252,15 +276,14 @@ function App() {
             </button>
           </form>
         </section>
-
-        <aside className="source-panel" aria-label={copy.snapshot}>
-          <div className="panel-title">
-            <Database aria-hidden="true" className="h-5 w-5" />
-            <h2>{copy.snapshot}</h2>
-          </div>
-          <SourceSnapshotDetails copy={copy} hasError={snapshotError} language={language} snapshot={snapshot} />
-        </aside>
       </main>
+
+      <footer className="data-footer" aria-live="polite">
+        <Clock aria-hidden="true" className="h-3.5 w-3.5" />
+        <span>
+          {copy.dataUpdated}: {snapshotError ? copy.noDate : formatDate(dataUpdatedAt, language)}
+        </span>
+      </footer>
     </div>
   );
 }
@@ -292,85 +315,6 @@ function LanguageSwitch({
   );
 }
 
-function SnapshotPill({
-  snapshot,
-  hasError,
-  language
-}: {
-  snapshot: SourceSnapshot | null;
-  hasError: boolean;
-  language: UiLanguage;
-}) {
-  const copy = text[language];
-  if (hasError || !snapshot || !snapshot.database_configured) {
-    return (
-      <div className="snapshot-pill">
-        <Clock aria-hidden="true" className="h-4 w-4" />
-        <span>{copy.unavailable}</span>
-      </div>
-    );
-  }
-
-  return (
-    <div className="snapshot-pill" data-testid="snapshot-pill">
-      <Clock aria-hidden="true" className="h-4 w-4" />
-      <span>
-        {snapshot.total_sources} {copy.sources}, {snapshot.total_chunks} {copy.chunks}
-      </span>
-    </div>
-  );
-}
-
-function SourceSnapshotDetails({
-  copy,
-  hasError,
-  language,
-  snapshot
-}: {
-  copy: (typeof text)[UiLanguage];
-  hasError: boolean;
-  language: UiLanguage;
-  snapshot: SourceSnapshot | null;
-}) {
-  if (hasError || !snapshot || !snapshot.database_configured) {
-    return <p className="snapshot-empty">{copy.unavailable}</p>;
-  }
-
-  const collectedAt = latestDate(snapshot.sources.map((source) => source.collected_at));
-  const updatedAt = latestDate(snapshot.sources.map((source) => source.official_last_updated_at));
-
-  return (
-    <div className="snapshot-details">
-      <dl className="metric-grid">
-        <div className="metric">
-          <dt>{copy.sources}</dt>
-          <dd>{snapshot.total_sources}</dd>
-        </div>
-        <div className="metric">
-          <dt>{copy.chunks}</dt>
-          <dd>{snapshot.total_chunks}</dd>
-        </div>
-      </dl>
-
-      <dl className="date-stack">
-        <DateLine label={copy.collected} language={language} value={collectedAt} />
-        <DateLine label={copy.updated} language={language} value={updatedAt} />
-      </dl>
-
-      <div className="source-list">
-        {snapshot.sources.slice(0, 6).map((source) => (
-          <a className="source-link" href={source.url} key={source.url} rel="noreferrer" target="_blank">
-            <span>
-              {source.owner} <span>/{source.category}</span>
-            </span>
-            <ExternalLink aria-hidden="true" className="h-4 w-4 shrink-0" />
-          </a>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 function ChatExchange({
   copy,
   language,
@@ -381,6 +325,7 @@ function ChatExchange({
   turn: ChatTurn;
 }) {
   const response = turn.response;
+  const citations = compactCitations(response.citations);
 
   return (
     <article className="space-y-4">
@@ -419,55 +364,30 @@ function ChatExchange({
             </div>
           </div>
         ) : null}
-
-        <dl className="answer-dates">
-          <DateLine label={copy.collected} language={language} value={response.data_currency.collected_at} />
-          <DateLine label={copy.updated} language={language} value={response.data_currency.official_last_updated_at} />
-        </dl>
       </div>
 
-      {response.citations.length > 0 ? (
-        <div>
-          <h3 className="citation-heading">{copy.citations}</h3>
-          <div className="citation-grid" data-testid="citation-list">
-            {response.citations.map((citation) => (
+      {citations.length > 0 ? (
+        <div className="citation-row" data-testid="citation-list">
+          <span className="citation-heading">{copy.citations}</span>
+          <div className="citation-pills">
+            {citations.map((citation) => (
               <a
-                className="citation-card"
-                href={citation.section_url || citation.source_url}
-                key={citation.citation_id}
+                aria-label={`${citation.source_owner}: ${citation.section_heading}`}
+                className="citation-pill"
+                href={citation.url}
+                key={citation.url}
                 rel="noreferrer"
                 target="_blank"
               >
-                <span className="citation-kicker">{citation.citation_id}</span>
                 <span className="font-semibold">{citation.source_owner}</span>
-                <span className="citation-section">{citation.section_heading}</span>
-                <span className="citation-link-label">
-                  {copy.official}
-                  <ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />
-                </span>
+                <span>{citation.section_heading}</span>
+                <ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />
               </a>
             ))}
           </div>
         </div>
       ) : null}
     </article>
-  );
-}
-
-function DateLine({
-  label,
-  language,
-  value
-}: {
-  label: string;
-  language: UiLanguage;
-  value: string | null;
-}) {
-  return (
-    <div className="date-line">
-      <dt>{label}</dt>
-      <dd>{formatDate(value, language)}</dd>
-    </div>
   );
 }
 
@@ -489,6 +409,32 @@ function latestDate(values: (string | null)[]): string | null {
   }
 
   return new Date(Math.max(...timestamps)).toISOString();
+}
+
+function latestUpdateDate(snapshot: SourceSnapshot | null, turns: ChatTurn[]): string | null {
+  const snapshotDates = snapshot?.database_configured
+    ? snapshot.sources.map((source) => source.official_last_updated_at)
+    : [];
+  const answerDates = turns.map((turn) => turn.response.data_currency.official_last_updated_at);
+
+  return latestDate([...snapshotDates, ...answerDates]);
+}
+
+function compactCitations(citations: ChatTurn["response"]["citations"]) {
+  const seen = new Map<string, (typeof citations)[number]>();
+
+  for (const citation of citations) {
+    const url = citation.section_url || citation.source_url;
+    if (!seen.has(url)) {
+      seen.set(url, citation);
+    }
+  }
+
+  return Array.from(seen.values()).map((citation) => ({
+    source_owner: citation.source_owner,
+    section_heading: citation.section_heading,
+    url: citation.section_url || citation.source_url
+  }));
 }
 
 function formatDate(value: string | null, language: UiLanguage) {

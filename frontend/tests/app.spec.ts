@@ -51,11 +51,21 @@ test.beforeEach(async ({ page }) => {
           ? "This is general information from official sources, not legal advice."
           : null,
         citations: asksLegalQuestion
-          ? []
-          : [
+            ? []
+            : [
               {
                 citation_id: "S1",
                 chunk_id: "chunk-1",
+                source_owner: "UDI",
+                source_url: "https://www.udi.no/en/",
+                section_url: "https://www.udi.no/en/#moving",
+                section_heading: "Moving to Norway",
+                collected_at: "2026-02-01T10:00:00Z",
+                official_last_updated_at: "2026-01-20T09:00:00Z"
+              },
+              {
+                citation_id: "S2",
+                chunk_id: "chunk-2",
                 source_owner: "UDI",
                 source_url: "https://www.udi.no/en/",
                 section_url: "https://www.udi.no/en/#moving",
@@ -76,15 +86,31 @@ test.beforeEach(async ({ page }) => {
 test("example prompts send a question and show citations", async ({ page }) => {
   await page.goto("/");
 
-  await expect(page.getByTestId("snapshot-pill")).toContainText("6 sources");
+  await expect(page.getByText("Updated data: 31 Jan 2026")).toBeVisible();
   await page.getByRole("button", { name: "What should I do after moving to Oslo?" }).click();
 
   await expect(page.getByText("Start with registration, tax, and the relevant Oslo services. [S1]")).toBeVisible();
   await expect(page.getByTestId("citation-list")).toContainText("UDI");
+  await expect(page.getByTestId("citation-list").getByRole("link")).toHaveCount(1);
   await expect(page.getByRole("link", { name: /Moving to Norway/ })).toHaveAttribute(
     "href",
     "https://www.udi.no/en/#moving"
   );
+  await expect(page.getByRole("button", { name: "What should I do after moving to Oslo?" })).toHaveCount(0);
+});
+
+test("enter sends, shift enter keeps a new line", async ({ page }) => {
+  await page.goto("/");
+
+  const composer = page.getByPlaceholder("Ask about UDI, NAV, tax, Oslo services, SUA, or SiO");
+  await composer.fill("First line");
+  await composer.press("Shift+Enter");
+  await composer.pressSequentially("second line");
+  await expect(composer).toHaveValue("First line\nsecond line");
+
+  await composer.press("Enter");
+
+  await expect(page.getByText("Start with registration, tax, and the relevant Oslo services. [S1]")).toBeVisible();
 });
 
 test("language toggle sends Norwegian requests", async ({ page }) => {
@@ -151,6 +177,22 @@ test("refresh clears the in-memory conversation", async ({ page }) => {
 
   await expect(page.getByText("Start with registration, tax, and the relevant Oslo services. [S1]")).toHaveCount(0);
   await expect(page.getByText("Ask a practical question about moving to Oslo or Norway.")).toBeVisible();
+});
+
+test("clear chat and the title reset the conversation", async ({ page }) => {
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "What should I do after moving to Oslo?" }).click();
+  await expect(page.getByText("Start with registration, tax, and the relevant Oslo services. [S1]")).toBeVisible();
+
+  await page.getByRole("button", { name: "Clear chat" }).click();
+  await expect(page.getByText("Start with registration, tax, and the relevant Oslo services. [S1]")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "What should I do after moving to Oslo?" })).toBeVisible();
+
+  await page.getByRole("button", { name: "What should I do after moving to Oslo?" }).click();
+  await page.getByRole("heading", { name: "Oslo Newcomer Assistant" }).click();
+  await expect(page.getByText("Start with registration, tax, and the relevant Oslo services. [S1]")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Where can students find housing support?" })).toBeVisible();
 });
 
 test("mobile layout keeps the chat controls reachable", async ({ page }) => {
