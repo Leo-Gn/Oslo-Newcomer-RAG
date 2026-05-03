@@ -1,0 +1,636 @@
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import math
+import time
+from collections.abc import Callable, Iterable, Sequence
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Any
+from urllib.parse import urlparse
+
+import httpx
+from sqlalchemy import Select, delete, func, or_, select
+from sqlalchemy.orm import Session
+
+from oslo_newcomer_rag.config import Settings, get_settings
+from oslo_newcomer_rag.db.models import DocumentChunk, Embedding, RetrievalLog, Source
+from oslo_newcomer_rag.db.session import create_engine_from_settings
+
+
+VECTOR_WEIGHT = 0.65
+KEYWORD_WEIGHT = 0.35
+MIN_RETRIEVAL_SCORE = 0.28
+MIN_VECTOR_SIMILARITY = 0.18
+MIN_VECTOR_ONLY_SIMILARITY = 0.55
+DEFAULT_BATCH_SIZE = 8
+DEFAULT_CANDIDATE_LIMIT = 40
+DEFAULT_RESULT_LIMIT = 6
+DEFAULT_NATIVE_REQUEST_INTERVAL_SECONDS = 0.35
+MAX_EMBEDDING_RETRY_ATTEMPTS = 6
+INITIAL_RETRY_SECONDS = 2.0
+MAX_RETRY_SECONDS = 60.0
+
+
+@dataclass(frozen=True)
+class RetrievalFilters:
+    language: str | None = None
+    owners: tuple[str, ...] = ()
+    categories: tuple[str, ...] = ()
+    source_urls: tuple[str, ...] = ()
+
+    def as_log_dict(self) -> dict[str, Any]:
+        return {
+            "language": self.language,
+            "owners": list(self.owners),
+            "categories": list(self.categories),
+            "source_urls": list(self.source_urls),
+        }
+
+
+@dataclass(frozen=True)
+class RetrievedChunk:
+    chunk_id: str
+    source_id: str
+    source_owner: str
+    source_url: str
+    category: str
+    language: str
+    section_heading: str
+    section_url: str
+    text: str
+    collected_at: datetime
+    official_last_updated_at: datetime | None
+    score: float
+    vector_score: float
+    keyword_score: float
+
+
+@dataclass(frozen=True)
+class RetrievalResult:
+    query: str
+    chunks: list[RetrievedChunk]
+    low_confidence: bool
+
+
+@dataclass(frozen=True)
+class EmbeddingBatchResult:
+    scanned_chunks: int
+    embedded_chunks: int
+    embedding_model: str
+    embedding_dim: int
+
+
+class EmbeddingConfigError(RuntimeError):
+    pass
+
+
+class EmbeddingResponseError(RuntimeError):
+    pass
+
+
+class OpenAICompatibleEmbeddingClient:
+    def __init__(
+        self,
+        settings: Settings,
+        client: httpx.Client | None = None,
+        timeout: float = 60.0,
+        sleep: Callable[[float], None] = time.sleep,
+        native_request_interval_seconds: float = DEFAULT_NATIVE_REQUEST_INTERVAL_SECONDS,
+    ) -> None:
+        if not settings.llm_base_url:
+            raise EmbeddingConfigError("LLM_BASE_URL is not configured")
+        if not settings.llm_api_key:
+            raise EmbeddingConfigError("LLM_API_KEY is not configured")
+        if not settings.embedding_model:
+            raise EmbeddingConfigError("EMBEDDING_MODEL is not configured")
+        if not settings.embedding_dim:
+            raise EmbeddingConfigError("EMBEDDING_DIM is not configured")
+
+        self.base_url = settings.llm_base_url.rstrip("/")
+        self.api_key = settings.llm_api_key.get_secret_value()
+        self.model = settings.embedding_model
+        self.embedding_dim = settings.embedding_dim
+        self._owned_client = client is None
+        self.client = client or httpx.Client(timeout=timeout)
+        self._sleep = sleep
+        self.native_request_interval_seconds = native_request_interval_seconds
+
+    def close(self) -> None:
+        if self._owned_client:
+            self.client.close()
+
+    def embed_texts(self, texts: Sequence[str], *, task: str) -> list[list[float]]:
+        if not texts:
+            return []
+
+        payload = {
+            "model": self.model,
+            "input": list(texts),
+            "encoding_format": "float",
+            "dimensions": self.embedding_dim,
+        }
+        response = self._post_with_retries(
+            f"{self.base_url}/embeddings",
+            headers={
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+            },
+            json=payload,
+        )
+
+        if response.status_code >= 400 and self._is_google_gemini_config():
+            return self._embed_with_gemini_native_endpoint(texts, task=task)
+
+        response.raise_for_status()
+        try:
+            vectors = self._parse_openai_embedding_response(response.json(), expected_count=len(texts))
+            return [self._prepare_vector(vector) for vector in vectors]
+        except EmbeddingResponseError:
+            if self._is_google_gemini_config():
+                return self._embed_with_gemini_native_endpoint(texts, task=task)
+            raise
+
+    def embed_query(self, query: str) -> list[float]:
+        return self.embed_texts([query], task="RETRIEVAL_QUERY")[0]
+
+    def _embed_with_gemini_native_endpoint(self, texts: Sequence[str], *, task: str) -> list[list[float]]:
+        endpoint = _gemini_native_embedding_endpoint(self.base_url, self.model)
+        vectors: list[list[float]] = []
+        for index, text in enumerate(texts):
+            response = self._post_with_retries(
+                endpoint,
+                headers={
+                    "x-goog-api-key": self.api_key,
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "content": {"parts": [{"text": text}]},
+                    "task_type": task,
+                    "output_dimensionality": self.embedding_dim,
+                },
+            )
+            response.raise_for_status()
+            vector = response.json().get("embedding", {}).get("values")
+            if not isinstance(vector, list):
+                raise EmbeddingResponseError("Embedding response did not contain embedding.values")
+            vectors.append(self._prepare_vector(vector))
+            if self.native_request_interval_seconds > 0 and index < len(texts) - 1:
+                self._sleep(self.native_request_interval_seconds)
+        return vectors
+
+    def _post_with_retries(
+        self,
+        url: str,
+        *,
+        headers: dict[str, str],
+        json: dict[str, Any],
+    ) -> httpx.Response:
+        for attempt in range(MAX_EMBEDDING_RETRY_ATTEMPTS):
+            response = self.client.post(url, headers=headers, json=json)
+            if response.status_code not in {429, 500, 502, 503, 504}:
+                return response
+            if attempt == MAX_EMBEDDING_RETRY_ATTEMPTS - 1:
+                return response
+
+            self._sleep(_retry_delay(response, attempt))
+
+        return response
+
+    def _parse_openai_embedding_response(
+        self,
+        payload: dict[str, Any],
+        *,
+        expected_count: int,
+    ) -> list[list[float]]:
+        data = payload.get("data")
+        if not isinstance(data, list) or len(data) != expected_count:
+            raise EmbeddingResponseError("Embedding response returned an unexpected number of vectors")
+
+        ordered = sorted(data, key=lambda item: item.get("index", 0) if isinstance(item, dict) else 0)
+        vectors = []
+        for item in ordered:
+            if not isinstance(item, dict) or not isinstance(item.get("embedding"), list):
+                raise EmbeddingResponseError("Embedding response item did not contain a vector")
+            vectors.append(item["embedding"])
+        return vectors
+
+    def _prepare_vector(self, vector: Sequence[float]) -> list[float]:
+        if len(vector) != self.embedding_dim:
+            raise EmbeddingResponseError(
+                f"Expected {self.embedding_dim} embedding dimensions, received {len(vector)}"
+            )
+        return normalize_vector([float(value) for value in vector])
+
+    def _is_google_gemini_config(self) -> bool:
+        host = (urlparse(self.base_url).hostname or "").lower()
+        return "googleapis.com" in host and self.model.startswith("gemini-")
+
+
+def normalize_vector(vector: Sequence[float]) -> list[float]:
+    length = math.sqrt(sum(value * value for value in vector))
+    if length == 0:
+        raise EmbeddingResponseError("Embedding vector had zero magnitude")
+    return [float(value / length) for value in vector]
+
+
+def build_missing_embeddings(
+    session: Session,
+    embedder: OpenAICompatibleEmbeddingClient,
+    *,
+    batch_size: int = DEFAULT_BATCH_SIZE,
+    limit: int | None = None,
+) -> EmbeddingBatchResult:
+    scanned = 0
+    embedded = 0
+
+    while limit is None or embedded < limit:
+        remaining = None if limit is None else limit - embedded
+        current_batch_size = batch_size if remaining is None else min(batch_size, remaining)
+        if current_batch_size <= 0:
+            break
+
+        chunks = _chunks_needing_embeddings(
+            session,
+            model=embedder.model,
+            dim=embedder.embedding_dim,
+            limit=current_batch_size,
+        )
+        if not chunks:
+            break
+
+        scanned += len(chunks)
+        vectors = embedder.embed_texts([chunk.text for chunk in chunks], task="RETRIEVAL_DOCUMENT")
+        chunk_ids = [chunk.id for chunk in chunks]
+        session.execute(delete(Embedding).where(Embedding.chunk_id.in_(chunk_ids)))
+        session.flush()
+
+        for chunk, vector in zip(chunks, vectors, strict=True):
+            session.add(
+                Embedding(
+                    chunk_id=chunk.id,
+                    embedding_model=embedder.model,
+                    embedding_dim=embedder.embedding_dim,
+                    vector=vector,
+                )
+            )
+        session.commit()
+        embedded += len(chunks)
+
+    return EmbeddingBatchResult(
+        scanned_chunks=scanned,
+        embedded_chunks=embedded,
+        embedding_model=embedder.model,
+        embedding_dim=embedder.embedding_dim,
+    )
+
+
+def retrieve_chunks(
+    session: Session,
+    embedder: OpenAICompatibleEmbeddingClient,
+    query: str,
+    *,
+    filters: RetrievalFilters | None = None,
+    limit: int = DEFAULT_RESULT_LIMIT,
+    candidate_limit: int = DEFAULT_CANDIDATE_LIMIT,
+    log_query: bool = True,
+) -> RetrievalResult:
+    clean_query = " ".join(query.split())
+    active_filters = filters or RetrievalFilters()
+    if not clean_query:
+        return RetrievalResult(query=query, chunks=[], low_confidence=True)
+
+    query_vector = embedder.embed_query(clean_query)
+    vector_rows = _vector_candidates(
+        session,
+        query_vector=query_vector,
+        filters=active_filters,
+        limit=candidate_limit,
+    )
+    keyword_rows = _keyword_candidates(
+        session,
+        query=clean_query,
+        filters=active_filters,
+        limit=candidate_limit,
+    )
+    ranked = _merge_rankings(vector_rows, keyword_rows, limit=limit)
+    low_confidence = _is_low_confidence(ranked)
+
+    if log_query:
+        session.add(
+            RetrievalLog(
+                query_hash=_hash_query(clean_query),
+                language=active_filters.language,
+                filters=active_filters.as_log_dict(),
+                retrieved_chunk_ids=[row.chunk.id for row in ranked],
+                ranking=[
+                    {
+                        "chunk_id": str(row.chunk.id),
+                        "score": row.score,
+                        "vector_score": row.vector_score,
+                        "keyword_score": row.keyword_score,
+                    }
+                    for row in ranked
+                ],
+                low_confidence=low_confidence,
+            )
+        )
+        session.commit()
+
+    if low_confidence:
+        return RetrievalResult(query=clean_query, chunks=[], low_confidence=True)
+
+    return RetrievalResult(
+        query=clean_query,
+        chunks=[row.to_retrieved_chunk() for row in ranked],
+        low_confidence=False,
+    )
+
+
+@dataclass
+class _Candidate:
+    chunk: DocumentChunk
+    source: Source
+    vector_score: float = 0.0
+    keyword_score: float = 0.0
+
+    @property
+    def score(self) -> float:
+        both_bonus = 0.04 if self.vector_score > 0 and self.keyword_score > 0 else 0.0
+        return (VECTOR_WEIGHT * self.vector_score) + (KEYWORD_WEIGHT * self.keyword_score) + both_bonus
+
+    def to_retrieved_chunk(self) -> RetrievedChunk:
+        return RetrievedChunk(
+            chunk_id=str(self.chunk.id),
+            source_id=str(self.source.id),
+            source_owner=self.source.owner,
+            source_url=self.source.url,
+            category=self.source.category,
+            language=self.chunk.language,
+            section_heading=self.chunk.section_heading,
+            section_url=self.chunk.section_url,
+            text=self.chunk.text,
+            collected_at=self.chunk.collected_at,
+            official_last_updated_at=self.chunk.official_last_updated_at,
+            score=round(self.score, 6),
+            vector_score=round(self.vector_score, 6),
+            keyword_score=round(self.keyword_score, 6),
+        )
+
+
+def _chunks_needing_embeddings(
+    session: Session,
+    *,
+    model: str,
+    dim: int,
+    limit: int,
+) -> list[DocumentChunk]:
+    return list(
+        session.scalars(
+            select(DocumentChunk)
+            .outerjoin(Embedding)
+            .where(
+                or_(
+                    Embedding.id.is_(None),
+                    Embedding.embedding_model != model,
+                    Embedding.embedding_dim != dim,
+                )
+            )
+            .order_by(DocumentChunk.collected_at, DocumentChunk.chunk_index)
+            .limit(limit)
+        )
+    )
+
+
+def _vector_candidates(
+    session: Session,
+    *,
+    query_vector: Sequence[float],
+    filters: RetrievalFilters,
+    limit: int,
+) -> list[_Candidate]:
+    distance = Embedding.vector.cosine_distance(query_vector).label("distance")
+    statement = (
+        select(DocumentChunk, Source, distance)
+        .join(Embedding, Embedding.chunk_id == DocumentChunk.id)
+        .join(Source, Source.id == DocumentChunk.source_id)
+        .where(Embedding.embedding_dim == len(query_vector))
+        .order_by(distance)
+        .limit(limit)
+    )
+    statement = _apply_filters(statement, filters)
+
+    rows = session.execute(statement).all()
+    candidates: list[_Candidate] = []
+    for chunk, source, raw_distance in rows:
+        distance_value = float(raw_distance)
+        similarity = max(0.0, 1.0 - distance_value)
+        candidates.append(_Candidate(chunk=chunk, source=source, vector_score=similarity))
+    return candidates
+
+
+def _keyword_candidates(
+    session: Session,
+    *,
+    query: str,
+    filters: RetrievalFilters,
+    limit: int,
+) -> list[_Candidate]:
+    tsquery = func.websearch_to_tsquery("simple", query)
+    rank = func.ts_rank_cd(DocumentChunk.search_vector, tsquery).label("rank")
+    statement = (
+        select(DocumentChunk, Source, rank)
+        .join(Source, Source.id == DocumentChunk.source_id)
+        .where(DocumentChunk.search_vector.op("@@")(tsquery))
+        .order_by(rank.desc())
+        .limit(limit)
+    )
+    statement = _apply_filters(statement, filters)
+
+    rows = session.execute(statement).all()
+    max_rank = max((float(raw_rank) for _, _, raw_rank in rows), default=0.0)
+    if max_rank <= 0:
+        return []
+
+    return [
+        _Candidate(
+            chunk=chunk,
+            source=source,
+            keyword_score=min(1.0, float(raw_rank) / max_rank),
+        )
+        for chunk, source, raw_rank in rows
+    ]
+
+
+def _apply_filters(statement: Select[Any], filters: RetrievalFilters) -> Select[Any]:
+    if filters.language:
+        statement = statement.where(DocumentChunk.language == filters.language)
+    if filters.owners:
+        statement = statement.where(Source.owner.in_(filters.owners))
+    if filters.categories:
+        statement = statement.where(Source.category.in_(filters.categories))
+    if filters.source_urls:
+        statement = statement.where(Source.url.in_(filters.source_urls))
+    return statement
+
+
+def _merge_rankings(
+    vector_rows: Iterable[_Candidate],
+    keyword_rows: Iterable[_Candidate],
+    *,
+    limit: int,
+) -> list[_Candidate]:
+    merged: dict[str, _Candidate] = {}
+
+    for row in vector_rows:
+        merged[str(row.chunk.id)] = row
+
+    for row in keyword_rows:
+        key = str(row.chunk.id)
+        existing = merged.get(key)
+        if existing:
+            existing.keyword_score = max(existing.keyword_score, row.keyword_score)
+        else:
+            merged[key] = row
+
+    return sorted(merged.values(), key=lambda row: row.score, reverse=True)[:limit]
+
+
+def _is_low_confidence(rows: Sequence[_Candidate]) -> bool:
+    if not rows:
+        return True
+    best = rows[0]
+    if best.keyword_score == 0:
+        return best.vector_score < MIN_VECTOR_ONLY_SIMILARITY
+    return best.score < MIN_RETRIEVAL_SCORE or (
+        best.vector_score < MIN_VECTOR_SIMILARITY and best.keyword_score < 0.5
+    )
+
+
+def _hash_query(query: str) -> str:
+    return hashlib.sha256(query.casefold().encode("utf-8")).hexdigest()
+
+
+def _gemini_native_embedding_endpoint(base_url: str, model: str) -> str:
+    parsed = urlparse(base_url)
+    root = f"{parsed.scheme}://{parsed.netloc}"
+    return f"{root}/v1beta/models/{model}:embedContent"
+
+
+def _retry_delay(response: httpx.Response, attempt: int) -> float:
+    retry_after = response.headers.get("retry-after")
+    if retry_after:
+        try:
+            return min(MAX_RETRY_SECONDS, max(0.0, float(retry_after)))
+        except ValueError:
+            pass
+
+    return min(MAX_RETRY_SECONDS, INITIAL_RETRY_SECONDS * (2**attempt))
+
+
+def build_embeddings_from_settings(
+    settings: Settings,
+    *,
+    limit: int | None = None,
+    batch_size: int = DEFAULT_BATCH_SIZE,
+    native_request_interval_seconds: float = DEFAULT_NATIVE_REQUEST_INTERVAL_SECONDS,
+) -> EmbeddingBatchResult:
+    engine = create_engine_from_settings(settings)
+    embedder = OpenAICompatibleEmbeddingClient(
+        settings,
+        native_request_interval_seconds=native_request_interval_seconds,
+    )
+    try:
+        with Session(engine) as session:
+            return build_missing_embeddings(session, embedder, limit=limit, batch_size=batch_size)
+    finally:
+        embedder.close()
+        engine.dispose()
+
+
+def retrieve_from_settings(
+    settings: Settings,
+    query: str,
+    *,
+    filters: RetrievalFilters | None = None,
+    limit: int = DEFAULT_RESULT_LIMIT,
+) -> RetrievalResult:
+    engine = create_engine_from_settings(settings)
+    embedder = OpenAICompatibleEmbeddingClient(settings)
+    try:
+        with Session(engine) as session:
+            return retrieve_chunks(session, embedder, query, filters=filters, limit=limit)
+    finally:
+        embedder.close()
+        engine.dispose()
+
+
+def embeddings_main() -> None:
+    parser = argparse.ArgumentParser(description="Create or refresh embeddings for stored source chunks.")
+    parser.add_argument("--limit", type=int, default=None, help="Only embed this many chunks.")
+    parser.add_argument("--batch-size", type=int, default=DEFAULT_BATCH_SIZE, help="Chunks to embed per commit.")
+    parser.add_argument(
+        "--request-interval",
+        type=float,
+        default=DEFAULT_NATIVE_REQUEST_INTERVAL_SECONDS,
+        help="Seconds to wait between Gemini native embedding requests.",
+    )
+    args = parser.parse_args()
+
+    result = build_embeddings_from_settings(
+        get_settings(),
+        limit=args.limit,
+        batch_size=args.batch_size,
+        native_request_interval_seconds=args.request_interval,
+    )
+    print(json.dumps(result.__dict__, indent=2))
+
+
+def retrieval_main() -> None:
+    parser = argparse.ArgumentParser(description="Run retrieval against the stored official source snapshot.")
+    parser.add_argument("query", help="Question or search query.")
+    parser.add_argument("--language", choices=["en", "no"], default=None)
+    parser.add_argument("--owner", action="append", default=[])
+    parser.add_argument("--category", action="append", default=[])
+    parser.add_argument("--source-url", action="append", default=[])
+    parser.add_argument("--limit", type=int, default=DEFAULT_RESULT_LIMIT)
+    args = parser.parse_args()
+
+    filters = RetrievalFilters(
+        language=args.language,
+        owners=tuple(args.owner),
+        categories=tuple(args.category),
+        source_urls=tuple(args.source_url),
+    )
+    result = retrieve_from_settings(get_settings(), args.query, filters=filters, limit=args.limit)
+    print(
+        json.dumps(
+            {
+                "query": result.query,
+                "low_confidence": result.low_confidence,
+                "chunks": [
+                    {
+                        "source_owner": chunk.source_owner,
+                        "source_url": chunk.source_url,
+                        "section_heading": chunk.section_heading,
+                        "section_url": chunk.section_url,
+                        "language": chunk.language,
+                        "score": chunk.score,
+                        "vector_score": chunk.vector_score,
+                        "keyword_score": chunk.keyword_score,
+                        "collected_at": chunk.collected_at.isoformat(),
+                        "official_last_updated_at": (
+                            chunk.official_last_updated_at.isoformat()
+                            if chunk.official_last_updated_at
+                            else None
+                        ),
+                        "text_preview": chunk.text[:320],
+                    }
+                    for chunk in result.chunks
+                ],
+            },
+            indent=2,
+        )
+    )

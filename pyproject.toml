@@ -23,6 +23,8 @@ dependencies = [
 [project.scripts]
 oslo-newcomer-rag = "oslo_newcomer_rag.__main__:main"
 oslo-ingest-sources = "oslo_newcomer_rag.ingestion:main"
+oslo-build-embeddings = "oslo_newcomer_rag.retrieval:embeddings_main"
+oslo-retrieve = "oslo_newcomer_rag.retrieval:retrieval_main"
 
 [build-system]
 requires = ["uv_build>=0.11.8,<0.12.0"]
