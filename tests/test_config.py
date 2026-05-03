@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from oslo_newcomer_rag.config import Settings
+from oslo_newcomer_rag.config import Settings, get_settings
 
 
 def test_development_settings_do_not_require_secrets() -> None:
@@ -34,3 +34,25 @@ def test_production_settings_accept_required_values() -> None:
 
     assert settings.has_database_config is True
 
+
+def test_app_settings_load_local_env_file(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    tmp_path.joinpath(".env").write_text(
+        "\n".join(
+            [
+                "DATABASE_URL=postgresql+psycopg://user:pass@localhost:5432/oslo_newcomer",
+                "LLM_BASE_URL=https://api.example.com/v1",
+                "LLM_API_KEY=test-key",
+                "LLM_MODEL=test-chat",
+                "EMBEDDING_MODEL=test-embedding",
+                "EMBEDDING_DIM=1536",
+            ]
+        )
+    )
+
+    get_settings.cache_clear()
+    settings = get_settings()
+    get_settings.cache_clear()
+
+    assert settings.database_url == "postgresql+psycopg://user:pass@localhost:5432/oslo_newcomer"
+    assert settings.has_database_config is True

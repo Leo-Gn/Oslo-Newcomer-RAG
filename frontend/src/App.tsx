@@ -29,6 +29,8 @@ const text = {
     send: "Send",
     thinking: "Checking sources",
     snapshot: "Static source snapshot",
+    chatTitle: "New conversation",
+    prompts: "Suggested questions",
     sources: "sources",
     chunks: "chunks",
     collected: "Collected",
@@ -58,6 +60,8 @@ const text = {
     send: "Send",
     thinking: "Sjekker kilder",
     snapshot: "Statisk kildeutdrag",
+    chatTitle: "Ny samtale",
+    prompts: "Forslag",
     sources: "kilder",
     chunks: "tekstbiter",
     collected: "Hentet",
@@ -149,39 +153,56 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-cloud text-ink">
-      <header className="border-b border-line bg-paper">
-        <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 px-4 py-5 sm:px-6 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <p className="text-sm font-medium uppercase tracking-[0.08em] text-moss">Oslo RAG demo</p>
-            <h1 className="mt-1 text-2xl font-semibold text-ink sm:text-3xl">{copy.appName}</h1>
-            <p className="mt-1 max-w-2xl text-sm leading-6 text-ink/70">{copy.subtitle}</p>
-          </div>
+    <div className="app-shell">
+      <header className="topbar">
+        <div className="window-dots" aria-hidden="true">
+          <span />
+          <span />
+          <span />
+        </div>
 
-          <div className="flex flex-wrap items-center gap-3">
-            <SnapshotPill snapshot={snapshot} hasError={snapshotError} language={language} />
-            <LanguageSwitch language={language} onChange={setLanguage} label={copy.language} />
-          </div>
+        <div className="brand-block">
+          <p className="eyebrow">Oslo RAG demo</p>
+          <h1>{copy.appName}</h1>
+          <p>{copy.subtitle}</p>
+        </div>
+
+        <div className="topbar-actions">
+          <SnapshotPill snapshot={snapshot} hasError={snapshotError} language={language} />
+          <LanguageSwitch language={language} onChange={setLanguage} label={copy.language} />
         </div>
       </header>
 
-      <main className="mx-auto grid w-full max-w-7xl gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[minmax(0,1fr)_340px]">
-        <section className="min-w-0" aria-label={copy.answer}>
-          <div className="flex flex-wrap gap-2 pb-4" aria-label="Example prompts">
-            {copy.examples.map((example) => (
-              <button
-                className="example-button"
-                disabled={loading}
-                key={example}
-                type="button"
-                onClick={() => void submitQuestion(example)}
-              >
-                {example}
-              </button>
-            ))}
+      <main className="workspace">
+        <section className="chat-surface" data-testid="chat-surface" aria-label={copy.answer}>
+          <div className="chat-head">
+            <div className="assistant-mark">
+              <BookOpen aria-hidden="true" className="h-5 w-5" />
+            </div>
+            <div>
+              <p>{copy.appName}</p>
+              <h2>{copy.chatTitle}</h2>
+            </div>
           </div>
 
-          <div className="chat-surface" data-testid="chat-surface">
+          <div className="prompt-card">
+            <div className="prompt-title">{copy.prompts}</div>
+            <div className="prompt-strip" aria-label="Example prompts">
+              {copy.examples.map((example) => (
+                <button
+                  className="example-button"
+                  disabled={loading}
+                  key={example}
+                  type="button"
+                  onClick={() => void submitQuestion(example)}
+                >
+                  {example}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="message-stage">
             {turns.length === 0 ? (
               <div className="empty-state">
                 <BookOpen aria-hidden="true" className="h-5 w-5" />
@@ -194,48 +215,48 @@ function App() {
                 ))}
               </div>
             )}
-
-            {error ? (
-              <div className="mt-5 flex items-start gap-3 border-l-4 border-red-700 bg-red-50 p-4 text-sm text-red-900" role="alert">
-                <AlertTriangle aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
-                <div>
-                  <p className="font-semibold">{copy.error}</p>
-                  <p className="mt-1">{error}</p>
-                </div>
-              </div>
-            ) : null}
-
-            {loading ? (
-              <div className="mt-5 flex items-center gap-2 text-sm font-medium text-fjord" role="status">
-                <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
-                <span>{copy.thinking}</span>
-              </div>
-            ) : null}
-
-            <form className="composer" onSubmit={onSubmit}>
-              <textarea
-                aria-label={copy.placeholder}
-                className="composer-input"
-                disabled={loading}
-                maxLength={2000}
-                onChange={(event) => setQuestion(event.target.value)}
-                onKeyDown={onComposerKeyDown}
-                placeholder={copy.placeholder}
-                rows={3}
-                value={question}
-              />
-              <button className="send-button" disabled={loading || !question.trim()} type="submit">
-                <Send aria-hidden="true" className="h-4 w-4" />
-                <span>{copy.send}</span>
-              </button>
-            </form>
           </div>
+
+          {error ? (
+            <div className="error-card" role="alert">
+              <AlertTriangle aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
+              <div>
+                <p className="font-semibold">{copy.error}</p>
+                <p className="mt-1">{error}</p>
+              </div>
+            </div>
+          ) : null}
+
+          {loading ? (
+            <div className="loading-row" role="status">
+              <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
+              <span>{copy.thinking}</span>
+            </div>
+          ) : null}
+
+          <form className="composer" onSubmit={onSubmit}>
+            <textarea
+              aria-label={copy.placeholder}
+              className="composer-input"
+              disabled={loading}
+              maxLength={2000}
+              onChange={(event) => setQuestion(event.target.value)}
+              onKeyDown={onComposerKeyDown}
+              placeholder={copy.placeholder}
+              rows={3}
+              value={question}
+            />
+            <button className="send-button" disabled={loading || !question.trim()} type="submit">
+              <Send aria-hidden="true" className="h-4 w-4" />
+              <span>{copy.send}</span>
+            </button>
+          </form>
         </section>
 
         <aside className="source-panel" aria-label={copy.snapshot}>
-          <div className="flex items-center gap-2">
-            <Database aria-hidden="true" className="h-5 w-5 text-moss" />
-            <h2 className="text-lg font-semibold">{copy.snapshot}</h2>
+          <div className="panel-title">
+            <Database aria-hidden="true" className="h-5 w-5" />
+            <h2>{copy.snapshot}</h2>
           </div>
           <SourceSnapshotDetails copy={copy} hasError={snapshotError} language={language} snapshot={snapshot} />
         </aside>
@@ -281,7 +302,7 @@ function SnapshotPill({
   language: UiLanguage;
 }) {
   const copy = text[language];
-  if (hasError || !snapshot) {
+  if (hasError || !snapshot || !snapshot.database_configured) {
     return (
       <div className="snapshot-pill">
         <Clock aria-hidden="true" className="h-4 w-4" />
@@ -311,16 +332,16 @@ function SourceSnapshotDetails({
   language: UiLanguage;
   snapshot: SourceSnapshot | null;
 }) {
-  if (hasError || !snapshot) {
-    return <p className="mt-4 text-sm leading-6 text-ink/70">{copy.unavailable}</p>;
+  if (hasError || !snapshot || !snapshot.database_configured) {
+    return <p className="snapshot-empty">{copy.unavailable}</p>;
   }
 
   const collectedAt = latestDate(snapshot.sources.map((source) => source.collected_at));
   const updatedAt = latestDate(snapshot.sources.map((source) => source.official_last_updated_at));
 
   return (
-    <div className="mt-5 space-y-5">
-      <dl className="grid grid-cols-2 gap-3 text-sm">
+    <div className="snapshot-details">
+      <dl className="metric-grid">
         <div className="metric">
           <dt>{copy.sources}</dt>
           <dd>{snapshot.total_sources}</dd>
@@ -331,16 +352,16 @@ function SourceSnapshotDetails({
         </div>
       </dl>
 
-      <dl className="space-y-3 text-sm">
+      <dl className="date-stack">
         <DateLine label={copy.collected} language={language} value={collectedAt} />
         <DateLine label={copy.updated} language={language} value={updatedAt} />
       </dl>
 
-      <div className="space-y-3">
+      <div className="source-list">
         {snapshot.sources.slice(0, 6).map((source) => (
           <a className="source-link" href={source.url} key={source.url} rel="noreferrer" target="_blank">
             <span>
-              {source.owner} <span className="text-ink/50">/{source.category}</span>
+              {source.owner} <span>/{source.category}</span>
             </span>
             <ExternalLink aria-hidden="true" className="h-4 w-4 shrink-0" />
           </a>
@@ -399,7 +420,7 @@ function ChatExchange({
           </div>
         ) : null}
 
-        <dl className="mt-4 grid gap-2 text-xs text-ink/65 sm:grid-cols-2">
+        <dl className="answer-dates">
           <DateLine label={copy.collected} language={language} value={response.data_currency.collected_at} />
           <DateLine label={copy.updated} language={language} value={response.data_currency.official_last_updated_at} />
         </dl>
@@ -407,8 +428,8 @@ function ChatExchange({
 
       {response.citations.length > 0 ? (
         <div>
-          <h3 className="mb-3 text-sm font-semibold text-ink">{copy.citations}</h3>
-          <div className="grid gap-3 md:grid-cols-2" data-testid="citation-list">
+          <h3 className="citation-heading">{copy.citations}</h3>
+          <div className="citation-grid" data-testid="citation-list">
             {response.citations.map((citation) => (
               <a
                 className="citation-card"
@@ -419,8 +440,8 @@ function ChatExchange({
               >
                 <span className="citation-kicker">{citation.citation_id}</span>
                 <span className="font-semibold">{citation.source_owner}</span>
-                <span className="line-clamp-2 text-sm text-ink/70">{citation.section_heading}</span>
-                <span className="mt-2 flex items-center gap-1 text-xs font-medium text-fjord">
+                <span className="citation-section">{citation.section_heading}</span>
+                <span className="citation-link-label">
                   {copy.official}
                   <ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />
                 </span>
