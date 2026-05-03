@@ -1,0 +1,154 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+}
+
+button,
+textarea {
+  font: inherit;
+}
+
+.language-switch {
+  @apply inline-flex h-11 items-center gap-1 rounded border border-line bg-white px-2 shadow-sm;
+}
+
+.language-button {
+  @apply h-8 min-w-10 rounded px-3 text-sm font-semibold text-ink/65 transition hover:bg-cloud hover:text-ink;
+}
+
+.language-button-active {
+  @apply bg-fjord text-white hover:bg-fjord hover:text-white;
+}
+
+.snapshot-pill {
+  @apply inline-flex h-11 max-w-full items-center gap-2 rounded border border-line bg-white px-3 text-sm font-medium text-ink/75 shadow-sm;
+}
+
+.example-button {
+  @apply rounded border border-line bg-white px-3 py-2 text-left text-sm font-medium text-ink shadow-sm transition hover:border-moss hover:text-moss disabled:cursor-not-allowed disabled:opacity-60;
+}
+
+.chat-surface {
+  @apply min-h-[620px] border border-line bg-paper p-4 shadow-sm sm:p-5;
+  border-radius: 8px;
+}
+
+.empty-state {
+  @apply flex min-h-[280px] items-center justify-center gap-2 text-center text-sm font-medium text-ink/60;
+}
+
+.composer {
+  @apply mt-6 grid gap-3 border-t border-line pt-5 sm:grid-cols-[minmax(0,1fr)_112px] sm:items-end;
+}
+
+.composer-input {
+  @apply min-h-28 w-full resize-y rounded border border-line bg-white px-3 py-3 text-base leading-6 text-ink outline-none transition placeholder:text-ink/45 focus:border-fjord focus:ring-2 focus:ring-fjord/20 disabled:cursor-not-allowed disabled:bg-cloud;
+}
+
+.send-button {
+  @apply inline-flex h-12 items-center justify-center gap-2 rounded bg-moss px-4 text-sm font-semibold text-white transition hover:bg-moss/90 disabled:cursor-not-allowed disabled:bg-ink/25;
+}
+
+.source-panel {
+  @apply h-fit border border-line bg-paper p-5 shadow-sm lg:sticky lg:top-6;
+  border-radius: 8px;
+}
+
+.metric {
+  @apply border border-line bg-white p-3;
+  border-radius: 8px;
+}
+
+.metric dt {
+  @apply text-xs font-medium uppercase tracking-[0.08em] text-ink/55;
+}
+
+.metric dd {
+  @apply mt-1 text-2xl font-semibold text-ink;
+}
+
+.source-link {
+  @apply flex min-h-11 items-center justify-between gap-3 rounded border border-line bg-white px-3 py-2 text-sm font-medium text-ink transition hover:border-fjord hover:text-fjord;
+}
+
+.question-row {
+  @apply ml-auto max-w-3xl rounded bg-fjord px-4 py-3 text-white;
+  border-radius: 8px;
+}
+
+.speaker-label {
+  @apply mb-1 block text-xs font-semibold uppercase tracking-[0.08em] text-white/70;
+}
+
+.answer-block {
+  @apply max-w-4xl border-l-4 border-moss bg-white px-4 py-4 shadow-sm;
+}
+
+.answer-refusal {
+  @apply border-warning bg-orange-50;
+}
+
+.state-badge {
+  @apply inline-flex min-h-8 items-center gap-2 rounded px-2.5 py-1 text-xs font-semibold;
+}
+
+.state-badge-answer {
+  @apply bg-moss/10 text-moss;
+}
+
+.state-badge-refusal {
+  @apply bg-orange-100 text-warning;
+}
+
+.answer-text {
+  @apply space-y-3 text-base leading-7 text-ink;
+}
+
+.disclaimer {
+  @apply mt-4 flex gap-3 border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-950;
+  border-radius: 8px;
+}
+
+.date-line {
+  @apply flex min-h-7 items-center justify-between gap-3 border-b border-line/70 pb-1;
+}
+
+.date-line dt {
+  @apply font-medium text-ink/55;
+}
+
+.date-line dd {
+  @apply text-right font-semibold text-ink/75;
+}
+
+.citation-card {
+  @apply flex min-h-36 flex-col border border-line bg-white p-4 text-ink shadow-sm transition hover:border-fjord hover:shadow-md;
+  border-radius: 8px;
+}
+
+.citation-kicker {
+  @apply mb-2 w-fit rounded bg-fjord/10 px-2 py-1 text-xs font-semibold text-fjord;
+}
+
+@media (max-width: 640px) {
+  .chat-surface {
+    min-height: 560px;
+  }
+
+  .question-row {
+    max-width: none;
+  }
+
+  .composer {
+    grid-template-columns: 1fr;
+  }
+}
