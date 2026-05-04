@@ -113,6 +113,51 @@ test("enter sends, shift enter keeps a new line", async ({ page }) => {
   await expect(page.getByText("Start with registration, tax, and the relevant Oslo services. [S1]")).toBeVisible();
 });
 
+test("composer stays editable while an answer is pending", async ({ page }) => {
+  await page.route("**/api/chat", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    await route.fulfill({
+      json: {
+        answer_id: "slow-answer",
+        answer: "Use the official pages for the current procedure. [S1]",
+        refused: false,
+        disclaimer: null,
+        citations: [
+          {
+            citation_id: "S1",
+            chunk_id: "chunk-1",
+            source_owner: "UDI",
+            source_url: "https://www.udi.no/en/",
+            section_url: "https://www.udi.no/en/#moving",
+            section_heading: "Moving to Norway",
+            collected_at: "2026-02-01T10:00:00Z",
+            official_last_updated_at: "2026-01-20T09:00:00Z"
+          }
+        ],
+        data_currency: {
+          collected_at: "2026-02-01T10:00:00Z",
+          official_last_updated_at: "2026-01-20T09:00:00Z"
+        }
+      }
+    });
+  });
+
+  await page.goto("/");
+  const composer = page.getByPlaceholder("Ask about UDI, NAV, tax, Oslo services, SUA, or SiO");
+
+  await composer.fill("First question");
+  await composer.press("Enter");
+  await expect(page.getByText("Checking sources")).toBeVisible();
+
+  await composer.fill("Follow-up typed while waiting");
+  await expect(composer).toHaveValue("Follow-up typed while waiting");
+  await expect(page.getByRole("button", { name: "Send" })).toBeDisabled();
+
+  await expect(page.getByText("Use the official pages for the current procedure. [S1]")).toBeVisible();
+  await expect(composer).toHaveValue("Follow-up typed while waiting");
+  await expect(page.getByRole("button", { name: "Send" })).toBeEnabled();
+});
+
 test("language toggle sends Norwegian requests", async ({ page }) => {
   let postedLanguage = "en";
 
@@ -193,6 +238,28 @@ test("clear chat and the title reset the conversation", async ({ page }) => {
   await page.getByRole("heading", { name: "Oslo Newcomer Assistant" }).click();
   await expect(page.getByText("Start with registration, tax, and the relevant Oslo services. [S1]")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Where can students find housing support?" })).toBeVisible();
+});
+
+test("conversation history scrolls without hiding header actions", async ({ page }) => {
+  await page.goto("/");
+  const composer = page.getByPlaceholder("Ask about UDI, NAV, tax, Oslo services, SUA, or SiO");
+
+  for (let index = 0; index < 8; index += 1) {
+    await composer.fill(`Housing follow-up ${index}`);
+    await composer.press("Enter");
+    await expect(page.getByText(`Housing follow-up ${index}`)).toBeVisible();
+  }
+
+  const stage = page.locator(".message-stage");
+  const scrollInfo = await stage.evaluate((element) => ({
+    top: element.scrollTop,
+    height: element.scrollHeight,
+    client: element.clientHeight
+  }));
+
+  expect(scrollInfo.height).toBeGreaterThan(scrollInfo.client);
+  await page.getByRole("button", { name: "Clear chat" }).click();
+  await expect(page.getByRole("button", { name: "What should I do after moving to Oslo?" })).toBeVisible();
 });
 
 test("mobile layout keeps the chat controls reachable", async ({ page }) => {

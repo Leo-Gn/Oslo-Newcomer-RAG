@@ -261,7 +261,6 @@ function App() {
             <textarea
               aria-label={copy.placeholder}
               className="composer-input"
-              disabled={loading}
               maxLength={2000}
               onChange={(event) => setQuestion(event.target.value)}
               onKeyDown={onComposerKeyDown}
