@@ -1,4 +1,11 @@
-import type { ChatHistoryMessage, ChatResponse, SourceSnapshot, UiLanguage } from "./types";
+import type {
+  ChatHistoryMessage,
+  ChatResponse,
+  FeedbackRating,
+  FeedbackResponse,
+  SourceSnapshot,
+  UiLanguage
+} from "./types";
 
 export async function fetchSourceSnapshot(): Promise<SourceSnapshot> {
   const response = await fetch("/api/sources");
@@ -25,6 +32,31 @@ export async function askQuestion(
       session_history: sessionHistory
     }),
     signal
+  });
+
+  if (!response.ok) {
+    const detail = await readErrorDetail(response);
+    throw new Error(detail);
+  }
+
+  return response.json();
+}
+
+export async function submitFeedback(
+  answerId: string,
+  rating: FeedbackRating,
+  citationChunkIds: string[]
+): Promise<FeedbackResponse> {
+  const response = await fetch("/api/feedback", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      answer_id: answerId,
+      rating,
+      citation_chunk_ids: citationChunkIds
+    })
   });
 
   if (!response.ok) {

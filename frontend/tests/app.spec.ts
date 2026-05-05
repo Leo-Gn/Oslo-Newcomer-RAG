@@ -159,7 +159,7 @@ test("messages can be selected and copied", async ({ page, context }) => {
 
   await page.getByRole("button", { name: "What should I do after moving to Oslo?" }).click();
   const answer = page.getByText("Start with registration, tax, and the relevant Oslo services. [S1]");
-  const composer = page.getByPlaceholder("Ask about UDI, NAV, tax, work, housing, SUA, or SiO");
+  const composer = page.getByPlaceholder("Type your question here...");
 
   await expect(answer).toBeVisible();
   await answer.click();
@@ -177,10 +177,53 @@ test("messages can be selected and copied", async ({ page, context }) => {
   );
 });
 
+test("feedback buttons submit only answer metadata", async ({ page }) => {
+  const feedbackBodies: unknown[] = [];
+
+  await page.route("**/api/feedback", async (route) => {
+    feedbackBodies.push(route.request().postDataJSON());
+    await route.fulfill({
+      status: 201,
+      json: {
+        feedback_id: "feedback-1",
+        created_at: "2026-05-05T12:00:00Z",
+        cleared: false
+      }
+    });
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "What should I do after moving to Oslo?" }).click();
+  await expect(page.getByText("Start with registration, tax, and the relevant Oslo services. [S1]")).toBeVisible();
+
+  await page.getByRole("button", { name: "Helpful", exact: true }).click();
+
+  await expect(page.getByRole("button", { name: "Helpful", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect.poll(() => feedbackBodies).toEqual([
+    {
+      answer_id: expect.any(String),
+      rating: 1,
+      citation_chunk_ids: ["chunk-1", "chunk-2"]
+    }
+  ]);
+  expect(JSON.stringify(feedbackBodies[0])).not.toContain("Start with registration");
+  expect(JSON.stringify(feedbackBodies[0])).not.toContain("What should I do");
+
+  await page.getByRole("button", { name: "Helpful", exact: true }).click();
+
+  await expect(page.getByRole("button", { name: "Helpful", exact: true })).toHaveAttribute("aria-pressed", "false");
+  await expect.poll(() => feedbackBodies.length).toBe(2);
+  expect(feedbackBodies[1]).toEqual({
+    answer_id: expect.any(String),
+    rating: 0,
+    citation_chunk_ids: ["chunk-1", "chunk-2"]
+  });
+});
+
 test("enter sends, shift enter keeps a new line", async ({ page }) => {
   await page.goto("/");
 
-  const composer = page.getByPlaceholder("Ask about UDI, NAV, tax, work, housing, SUA, or SiO");
+  const composer = page.getByPlaceholder("Type your question here...");
   await composer.fill("First line");
   await composer.press("Shift+Enter");
   await composer.pressSequentially("second line");
@@ -221,7 +264,7 @@ test("composer stays editable while an answer is pending", async ({ page }) => {
   });
 
   await page.goto("/");
-  const composer = page.getByPlaceholder("Ask about UDI, NAV, tax, work, housing, SUA, or SiO");
+  const composer = page.getByPlaceholder("Type your question here...");
 
   await composer.fill("First question");
   await composer.press("Enter");
@@ -272,7 +315,7 @@ test("language toggle sends Norwegian requests", async ({ page }) => {
 
   await page.goto("/");
   await page.getByRole("button", { name: "NO" }).click();
-  await expect(page.getByPlaceholder("Spør om UDI, NAV, skatt, arbeid, bolig, SUA eller SiO")).toBeVisible();
+  await expect(page.getByPlaceholder("Skriv spørsmålet ditt her...")).toBeVisible();
   await expect(page.getByText("Hjelper deg med norsk byråkrati via offentlige kilder.")).toBeVisible();
 
   await page.getByRole("button", { name: "Hvordan får jeg skattekort?" }).click();
@@ -294,7 +337,7 @@ test("theme toggle starts light and switches to dark", async ({ page }) => {
 test("refusal and disclaimer states are clear", async ({ page }) => {
   await page.goto("/");
 
-  await page.getByPlaceholder("Ask about UDI, NAV, tax, work, housing, SUA, or SiO").fill(
+  await page.getByPlaceholder("Type your question here...").fill(
     "My application was rejected. Should I appeal?"
   );
   await page.getByRole("button", { name: "Send" }).click();
@@ -312,7 +355,7 @@ test("refresh clears the in-memory conversation", async ({ page }) => {
   await page.reload();
 
   await expect(page.getByText("Start with registration, tax, and the relevant Oslo services. [S1]")).toHaveCount(0);
-  await expect(page.getByText("Ask about permits, public services, work, tax, housing, or student life.")).toBeVisible();
+  await expect(page.getByText("Ask about permits, public services, work, tax, housing, or international student resources.")).toBeVisible();
 });
 
 test("clear chat and the title reset the conversation", async ({ page }) => {
@@ -333,7 +376,7 @@ test("clear chat and the title reset the conversation", async ({ page }) => {
 
 test("conversation history scrolls without hiding header actions", async ({ page }) => {
   await page.goto("/");
-  const composer = page.getByPlaceholder("Ask about UDI, NAV, tax, work, housing, SUA, or SiO");
+  const composer = page.getByPlaceholder("Type your question here...");
 
   for (let index = 0; index < 8; index += 1) {
     await composer.fill(`Housing follow-up ${index}`);
@@ -359,6 +402,6 @@ test("mobile layout keeps the chat controls reachable", async ({ page }) => {
 
   await expect(page.getByRole("heading", { name: "Oslo Newcomer RAG" })).toBeVisible();
   await expect(page.getByRole("button", { name: "What should I do after moving to Oslo?" })).toBeVisible();
-  await expect(page.getByPlaceholder("Ask about UDI, NAV, tax, work, housing, SUA, or SiO")).toBeVisible();
+  await expect(page.getByPlaceholder("Type your question here...")).toBeVisible();
   await expect(page.getByRole("button", { name: "Send" })).toBeVisible();
 });

@@ -10,12 +10,14 @@ import {
   Moon,
   RotateCcw,
   ShieldAlert,
-  Sun
+  Sun,
+  ThumbsDown,
+  ThumbsUp
 } from "lucide-react";
 import { FormEvent, KeyboardEvent, MouseEvent, useEffect, useMemo, useRef, useState } from "react";
 
-import { askQuestion, fetchSourceSnapshot } from "./api";
-import type { ChatHistoryMessage, ChatTurn, SourceSnapshot, UiLanguage } from "./types";
+import { askQuestion, fetchSourceSnapshot, submitFeedback } from "./api";
+import type { ChatHistoryMessage, ChatTurn, FeedbackRating, SourceSnapshot, UiLanguage } from "./types";
 
 const text = {
   en: {
@@ -29,7 +31,7 @@ const text = {
       "How do I get a tax deduction card?",
       "Where can students find housing support?"
     ],
-    placeholder: "Ask about UDI, NAV, tax, work, housing, SUA, or SiO",
+    placeholder: "Type your question here...",
     send: "Send",
     thinking: "Checking official sources",
     prompts: "Suggested questions",
@@ -47,9 +49,13 @@ const text = {
     answer: "Answer",
     question: "You",
     error: "Request failed",
-    empty: "Ask about permits, public services, work, tax, housing, or student life.",
+    empty: "Ask about permits, public services, work, tax, housing, or international student resources.",
     official: "Official source",
-    mobileCheck: "Ready"
+    mobileCheck: "Ready",
+    helpful: "Helpful",
+    notHelpful: "Not helpful",
+    feedbackSaved: "Feedback saved",
+    feedbackFailed: "Feedback failed"
   },
   no: {
     appName: "Oslo Newcomer RAG",
@@ -62,7 +68,7 @@ const text = {
       "Hvordan får jeg skattekort?",
       "Hvor kan studenter finne hjelp med bolig?"
     ],
-    placeholder: "Spør om UDI, NAV, skatt, arbeid, bolig, SUA eller SiO",
+    placeholder: "Skriv spørsmålet ditt her...",
     send: "Send",
     thinking: "Sjekker offentlige kilder",
     prompts: "Forslag",
@@ -80,11 +86,21 @@ const text = {
     answer: "Svar",
     question: "Du",
     error: "Forespørselen feilet",
-    empty: "Spør om opphold, offentlige tjenester, arbeid, skatt, bolig eller studieliv.",
+    empty: "Spør om opphold, offentlige tjenester, arbeid, skatt, bolig eller ressurser for internasjonale studenter.",
     official: "Offentlig kilde",
-    mobileCheck: "Klar"
+    mobileCheck: "Klar",
+    helpful: "Nyttig",
+    notHelpful: "Ikke nyttig",
+    feedbackSaved: "Tilbakemelding lagret",
+    feedbackFailed: "Tilbakemelding feilet"
   }
 } as const;
+
+type FeedbackStatus = {
+  rating: FeedbackRating | null;
+  pending: boolean;
+  failed: boolean;
+};
 
 function App() {
   const [language, setLanguage] = useState<UiLanguage>("en");
@@ -96,6 +112,7 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [pendingQuestion, setPendingQuestion] = useState<string | null>(null);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+  const [feedbackByAnswer, setFeedbackByAnswer] = useState<Record<string, FeedbackStatus>>({});
   const [error, setError] = useState<string | null>(null);
   const activeRequestRef = useRef<AbortController | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
@@ -190,6 +207,7 @@ function App() {
     setPendingQuestion(null);
     setLoading(false);
     setCopiedMessageId(null);
+    setFeedbackByAnswer({});
     requestAnimationFrame(() => composerRef.current?.focus());
   }
 
@@ -223,6 +241,34 @@ function App() {
     }
   }
 
+  async function sendTurnFeedback(turn: ChatTurn, rating: FeedbackRating) {
+    const answerId = turn.response.answer_id;
+    const current = feedbackByAnswer[answerId];
+    if (current?.pending) {
+      return;
+    }
+    const nextRating: FeedbackRating = current?.rating === rating ? 0 : rating;
+    const nextState = nextRating === 0 ? null : nextRating;
+
+    setFeedbackByAnswer((statuses) => ({
+      ...statuses,
+      [answerId]: { rating: current?.rating ?? null, pending: true, failed: false }
+    }));
+
+    try {
+      await submitFeedback(answerId, nextRating, citationChunkIds(turn.response.citations));
+      setFeedbackByAnswer((statuses) => ({
+        ...statuses,
+        [answerId]: { rating: nextState, pending: false, failed: false }
+      }));
+    } catch {
+      setFeedbackByAnswer((statuses) => ({
+        ...statuses,
+        [answerId]: { rating: current?.rating ?? null, pending: false, failed: true }
+      }));
+    }
+  }
+
   return (
     <div className={`app-shell theme-${theme}`}>
       <main className="workspace">
@@ -233,7 +279,12 @@ function App() {
         >
           <header className="topbar">
             <button className="brand-block" type="button" onClick={clearChat} aria-label={copy.reset}>
-              <h1>{copy.appName}</h1>
+              <span className="brand-title">
+                <span className="brand-mark">
+                  <BookOpen aria-hidden="true" className="h-3.5 w-3.5" />
+                </span>
+                <h1>{copy.appName}</h1>
+              </span>
               <p>{copy.subtitle}</p>
             </button>
 
@@ -248,7 +299,12 @@ function App() {
           </header>
 
           {conversationStarted ? (
-            <>
+            <div className="chat-body">
+              <button className="floating-clear-button" type="button" onClick={clearChat}>
+                <RotateCcw aria-hidden="true" className="h-3.5 w-3.5" />
+                <span>{copy.clear}</span>
+              </button>
+
               <div className="message-stage" ref={messageStageRef}>
                 <div className="space-y-8" data-testid="chat-history">
                   {turns.map((turn) => (
@@ -256,7 +312,8 @@ function App() {
                       copiedMessageId={copiedMessageId}
                       copy={copy}
                       key={turn.id}
-                      language={language}
+                      feedbackStatus={feedbackByAnswer[turn.response.answer_id]}
+                      onFeedback={(rating) => void sendTurnFeedback(turn, rating)}
                       onCopy={(id, value) => void copyMessage(id, value)}
                       turn={turn}
                     />
@@ -286,11 +343,9 @@ function App() {
               ) : null}
 
               <Composer
-                clearLabel={copy.clear}
                 copy={copy}
                 loading={loading}
                 onChange={setQuestion}
-                onClear={clearChat}
                 onKeyDown={onComposerKeyDown}
                 onSubmit={onSubmit}
                 question={question}
@@ -298,7 +353,7 @@ function App() {
                   composerRef.current = element;
                 }}
               />
-            </>
+            </div>
           ) : (
             <div className="start-screen" onClick={onMessageStageClick}>
               <div className="empty-state">
@@ -377,21 +432,17 @@ function ThemeSwitch({
 }
 
 function Composer({
-  clearLabel,
   copy,
   loading,
   onChange,
-  onClear,
   onKeyDown,
   onSubmit,
   question,
   refCallback
 }: {
-  clearLabel?: string;
   copy: (typeof text)[UiLanguage];
   loading: boolean;
   onChange: (value: string) => void;
-  onClear?: () => void;
   onKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   question: string;
@@ -407,20 +458,10 @@ function Composer({
         onKeyDown={onKeyDown}
         placeholder={copy.placeholder}
         ref={refCallback}
-        rows={2}
+        rows={1}
         value={question}
       />
       <div className="composer-actions">
-        {onClear && clearLabel ? (
-          <button
-            aria-label={clearLabel}
-            className="composer-icon-button composer-reset-button"
-            type="button"
-            onClick={onClear}
-          >
-            <RotateCcw aria-hidden="true" className="h-4 w-4" />
-          </button>
-        ) : null}
         <button className="send-button" disabled={loading || !question.trim()} type="submit">
           <ArrowUp aria-hidden="true" className="h-5 w-5" />
           <span>{copy.send}</span>
@@ -441,7 +482,7 @@ function LanguageSwitch({
 }) {
   return (
     <div className="language-switch" aria-label={label}>
-      <Globe2 aria-hidden="true" className="h-4 w-4 text-fjord" />
+      <Globe2 aria-hidden="true" className="h-4 w-4" />
       {(["en", "no"] as const).map((option) => (
         <button
           aria-pressed={language === option}
@@ -460,13 +501,15 @@ function LanguageSwitch({
 function ChatExchange({
   copiedMessageId,
   copy,
-  language,
+  feedbackStatus,
+  onFeedback,
   onCopy,
   turn
 }: {
   copiedMessageId: string | null;
   copy: (typeof text)[UiLanguage];
-  language: UiLanguage;
+  feedbackStatus?: FeedbackStatus;
+  onFeedback: (rating: FeedbackRating) => void;
   onCopy: (id: string, value: string) => void;
   turn: ChatTurn;
 }) {
@@ -501,12 +544,21 @@ function ChatExchange({
               </span>
             )}
           </div>
-          <CopyButton
-            copied={copiedMessageId === answerCopyId}
-            copyLabel={copy.copy}
-            copiedLabel={copy.copied}
-            onClick={() => onCopy(answerCopyId, response.answer)}
-          />
+          <div className="message-actions">
+            <CopyButton
+              copied={copiedMessageId === answerCopyId}
+              copyLabel={copy.copy}
+              copiedLabel={copy.copied}
+              onClick={() => onCopy(answerCopyId, response.answer)}
+            />
+            <FeedbackButtons
+              copy={copy}
+              failed={feedbackStatus?.failed ?? false}
+              onFeedback={onFeedback}
+              pending={feedbackStatus?.pending ?? false}
+              rating={feedbackStatus?.rating ?? null}
+            />
+          </div>
         </div>
 
         <div className="answer-text">
@@ -548,6 +600,49 @@ function ChatExchange({
         </div>
       ) : null}
     </article>
+  );
+}
+
+function FeedbackButtons({
+  copy,
+  failed,
+  onFeedback,
+  pending,
+  rating
+}: {
+  copy: (typeof text)[UiLanguage];
+  failed: boolean;
+  onFeedback: (rating: FeedbackRating) => void;
+  pending: boolean;
+  rating: FeedbackRating | null;
+}) {
+  const statusLabel = failed ? copy.feedbackFailed : rating ? copy.feedbackSaved : undefined;
+
+  return (
+    <div className="feedback-controls" aria-label={statusLabel}>
+      <button
+        aria-label={copy.helpful}
+        aria-pressed={rating === 1}
+        className={rating === 1 ? "feedback-button feedback-button-active" : "feedback-button"}
+        disabled={pending}
+        title={copy.helpful}
+        type="button"
+        onClick={() => onFeedback(1)}
+      >
+        <ThumbsUp aria-hidden="true" className="h-3.5 w-3.5" />
+      </button>
+      <button
+        aria-label={copy.notHelpful}
+        aria-pressed={rating === -1}
+        className={rating === -1 ? "feedback-button feedback-button-active" : "feedback-button"}
+        disabled={pending}
+        title={copy.notHelpful}
+        type="button"
+        onClick={() => onFeedback(-1)}
+      >
+        <ThumbsDown aria-hidden="true" className="h-3.5 w-3.5" />
+      </button>
+    </div>
   );
 }
 
@@ -653,6 +748,10 @@ function compactCitations(citations: ChatTurn["response"]["citations"]) {
     section_heading: citation.section_heading,
     url: citation.section_url || citation.source_url
   }));
+}
+
+function citationChunkIds(citations: ChatTurn["response"]["citations"]) {
+  return Array.from(new Set(citations.map((citation) => citation.chunk_id)));
 }
 
 function formatDate(value: string | null, language: UiLanguage) {

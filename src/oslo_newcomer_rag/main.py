@@ -1,15 +1,16 @@
-from importlib.metadata import PackageNotFoundError, version
 from datetime import datetime
+from importlib.metadata import PackageNotFoundError, version
 from typing import Literal
+from uuid import UUID
 
 import httpx
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, status
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from oslo_newcomer_rag.config import Settings, get_settings
-from oslo_newcomer_rag.db.models import Document, DocumentChunk, Source
+from oslo_newcomer_rag.db.models import AnonymousFeedback, Document, DocumentChunk, Source
 from oslo_newcomer_rag.db.session import check_database, create_engine_from_settings
 from oslo_newcomer_rag.generation import (
     ChatConfigError,
@@ -94,6 +95,18 @@ class ChatResponse(BaseModel):
     disclaimer: str | None
     citations: list[ChatCitation]
     data_currency: ChatDataCurrency
+
+
+class FeedbackRequest(BaseModel):
+    answer_id: UUID
+    rating: Literal[-1, 0, 1]
+    citation_chunk_ids: list[UUID] = Field(default_factory=list, max_length=20)
+
+
+class FeedbackResponse(BaseModel):
+    feedback_id: UUID | None
+    created_at: datetime | None
+    cleared: bool = False
 
 
 def package_version() -> str:
@@ -216,6 +229,37 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             engine.dispose()
 
         return _chat_response(answer)
+
+    @api.post(
+        "/api/feedback",
+        response_model=FeedbackResponse,
+        status_code=status.HTTP_201_CREATED,
+        tags=["feedback"],
+    )
+    async def feedback(request: FeedbackRequest) -> FeedbackResponse:
+        if not app_settings.has_database_config:
+            raise HTTPException(status_code=503, detail="DATABASE_URL is not configured")
+
+        engine = create_engine_from_settings(app_settings)
+        try:
+            with Session(engine) as session:
+                session.execute(delete(AnonymousFeedback).where(AnonymousFeedback.answer_id == request.answer_id))
+                if request.rating == 0:
+                    session.commit()
+                    return FeedbackResponse(feedback_id=None, created_at=None, cleared=True)
+
+                row = AnonymousFeedback(
+                    answer_id=request.answer_id,
+                    rating=request.rating,
+                    citation_chunk_ids=request.citation_chunk_ids,
+                )
+                session.add(row)
+                session.commit()
+                session.refresh(row)
+        finally:
+            engine.dispose()
+
+        return FeedbackResponse(feedback_id=row.id, created_at=row.created_at)
 
     return api
 

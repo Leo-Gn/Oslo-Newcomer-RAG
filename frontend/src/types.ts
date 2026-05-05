@@ -30,6 +30,14 @@ export type ChatResponse = {
   data_currency: ChatDataCurrency;
 };
 
+export type FeedbackRating = -1 | 0 | 1;
+
+export type FeedbackResponse = {
+  feedback_id: string | null;
+  created_at: string | null;
+  cleared: boolean;
+};
+
 export type SourceSnapshot = {
   database_configured: boolean;
   total_sources: number;
