@@ -1129,7 +1129,7 @@ button {
 .theme-light .prompt-title,
 .theme-light .citation-heading,
 .theme-light .data-footer {
-  color: rgba(42, 48, 58, 0.56);
+  color: rgba(30, 36, 46, 0.68);
 }
 
 .theme-light .empty-state {
@@ -1188,6 +1188,11 @@ button {
     linear-gradient(180deg, rgba(255, 255, 255, 0.84), rgba(255, 255, 255, 0.38)),
     rgba(255, 255, 255, 0.4);
   color: rgba(15, 18, 24, 0.92);
+}
+
+.theme-light .thinking-dots span {
+  background: rgba(35, 102, 64, 0.82);
+  box-shadow: 0 0 8px rgba(35, 102, 64, 0.2);
 }
 
 .theme-light .composer {
