@@ -3,9 +3,9 @@ import {
   BookOpen,
   CheckCircle2,
   Clock,
+  Copy,
   ExternalLink,
   Globe2,
-  Loader2,
   RotateCcw,
   Send,
   ShieldAlert
@@ -18,17 +18,16 @@ import type { ChatHistoryMessage, ChatTurn, SourceSnapshot, UiLanguage } from ".
 const text = {
   en: {
     appName: "Oslo Newcomer Assistant",
-    subtitle: "Official-source answers for practical first steps in Norway.",
+    subtitle: "Official-source answers for immigrants and newcomers in Norway.",
     language: "Language",
     examples: [
       "What should I do after moving to Oslo?",
       "How do I get a tax deduction card?",
       "Where can students find housing support?"
     ],
-    placeholder: "Ask about UDI, NAV, tax, Oslo services, SUA, or SiO",
+    placeholder: "Ask about UDI, NAV, tax, work, housing, SUA, or SiO",
     send: "Send",
-    thinking: "Checking sources",
-    chatTitle: "New conversation",
+    thinking: "Checking official sources",
     prompts: "Suggested questions",
     sources: "sources",
     clear: "Clear chat",
@@ -37,28 +36,29 @@ const text = {
     unavailable: "Source snapshot unavailable",
     noDate: "not listed",
     citations: "Sources",
+    copy: "Copy",
+    copied: "Copied",
     refusal: "Could not answer safely",
     disclaimer: "Note",
     answer: "Answer",
     question: "You",
     error: "Request failed",
-    empty: "Ask a practical question about moving to Oslo or Norway.",
+    empty: "Ask about permits, public services, work, tax, housing, or student life.",
     official: "Official source",
     mobileCheck: "Ready"
   },
   no: {
     appName: "Oslo Newcomer Assistant",
-    subtitle: "Svar fra offentlige kilder om praktiske første steg i Norge.",
+    subtitle: "Svar fra offentlige kilder for innvandrere og nykommere i Norge.",
     language: "Språk",
     examples: [
       "Hva bør jeg gjøre etter at jeg flytter til Oslo?",
       "Hvordan får jeg skattekort?",
       "Hvor kan studenter finne hjelp med bolig?"
     ],
-    placeholder: "Spør om UDI, NAV, skatt, Oslo-tjenester, SUA eller SiO",
+    placeholder: "Spør om UDI, NAV, skatt, arbeid, bolig, SUA eller SiO",
     send: "Send",
-    thinking: "Sjekker kilder",
-    chatTitle: "Ny samtale",
+    thinking: "Sjekker offentlige kilder",
     prompts: "Forslag",
     sources: "kilder",
     clear: "Tøm chat",
@@ -67,12 +67,14 @@ const text = {
     unavailable: "Kildeutdrag er ikke tilgjengelig",
     noDate: "ikke oppgitt",
     citations: "Kilder",
+    copy: "Kopier",
+    copied: "Kopiert",
     refusal: "Kunne ikke svare trygt",
     disclaimer: "Merk",
     answer: "Svar",
     question: "Du",
     error: "Forespørselen feilet",
-    empty: "Spør om praktiske steg ved flytting til Oslo eller Norge.",
+    empty: "Spør om opphold, offentlige tjenester, arbeid, skatt, bolig eller studieliv.",
     official: "Offentlig kilde",
     mobileCheck: "Klar"
   }
@@ -85,13 +87,18 @@ function App() {
   const [snapshot, setSnapshot] = useState<SourceSnapshot | null>(null);
   const [snapshotError, setSnapshotError] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [pendingQuestion, setPendingQuestion] = useState<string | null>(null);
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const activeRequestRef = useRef<AbortController | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const messageStageRef = useRef<HTMLDivElement | null>(null);
+  const requestVersionRef = useRef(0);
 
   const copy = text[language];
   const history = useMemo(() => buildHistory(turns), [turns]);
   const dataUpdatedAt = useMemo(() => latestUpdateDate(snapshot, turns), [snapshot, turns]);
+  const conversationStarted = turns.length > 0 || Boolean(pendingQuestion) || Boolean(error);
 
   useEffect(() => {
     let active = true;
@@ -119,7 +126,7 @@ function App() {
       top: messageStageRef.current.scrollHeight,
       behavior: "smooth"
     });
-  }, [turns, loading]);
+  }, [turns, pendingQuestion, loading]);
 
   async function submitQuestion(prompt: string) {
     const trimmed = prompt.trim();
@@ -129,10 +136,20 @@ function App() {
 
     setQuestion("");
     setError(null);
+    setPendingQuestion(trimmed);
     setLoading(true);
+    activeRequestRef.current?.abort();
+
+    const controller = new AbortController();
+    const requestVersion = requestVersionRef.current + 1;
+    activeRequestRef.current = controller;
+    requestVersionRef.current = requestVersion;
 
     try {
-      const response = await askQuestion(trimmed, language, history);
+      const response = await askQuestion(trimmed, language, history, controller.signal);
+      if (requestVersionRef.current !== requestVersion) {
+        return;
+      }
       setTurns((current) => [
         ...current,
         {
@@ -141,18 +158,31 @@ function App() {
           response
         }
       ]);
+      setPendingQuestion(null);
     } catch (err) {
+      if (requestVersionRef.current !== requestVersion || controller.signal.aborted) {
+        return;
+      }
       setError(err instanceof Error ? err.message : copy.error);
     } finally {
-      setLoading(false);
-      requestAnimationFrame(() => composerRef.current?.focus());
+      if (requestVersionRef.current === requestVersion) {
+        activeRequestRef.current = null;
+        setLoading(false);
+        requestAnimationFrame(() => composerRef.current?.focus());
+      }
     }
   }
 
   function clearChat() {
+    activeRequestRef.current?.abort();
+    activeRequestRef.current = null;
+    requestVersionRef.current += 1;
     setTurns([]);
     setQuestion("");
     setError(null);
+    setPendingQuestion(null);
+    setLoading(false);
+    setCopiedMessageId(null);
     requestAnimationFrame(() => composerRef.current?.focus());
   }
 
@@ -176,6 +206,16 @@ function App() {
     composerRef.current?.focus();
   }
 
+  async function copyMessage(id: string, value: string) {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopiedMessageId(id);
+      window.setTimeout(() => setCopiedMessageId((current) => (current === id ? null : current)), 1400);
+    } catch {
+      setCopiedMessageId(null);
+    }
+  }
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -186,94 +226,110 @@ function App() {
         </button>
 
         <div className="topbar-actions">
-          <button className="clear-button" type="button" onClick={clearChat}>
-            <RotateCcw aria-hidden="true" className="h-4 w-4" />
-            <span>{copy.clear}</span>
-          </button>
           <LanguageSwitch language={language} onChange={setLanguage} label={copy.language} />
         </div>
       </header>
 
       <main className="workspace">
-        <section className="chat-surface" data-testid="chat-surface" aria-label={copy.answer}>
-          <div className="chat-head">
-            <div className="assistant-mark">
-              <BookOpen aria-hidden="true" className="h-5 w-5" />
-            </div>
-            <div>
-              <p>{copy.appName}</p>
-              <h2>{copy.chatTitle}</h2>
-            </div>
-          </div>
-
-          {turns.length === 0 ? (
-            <div className="prompt-card">
-              <div className="prompt-title">{copy.prompts}</div>
-              <div className="prompt-strip" aria-label="Example prompts">
-                {copy.examples.map((example) => (
-                  <button
-                    className="example-button"
-                    disabled={loading}
-                    key={example}
-                    type="button"
-                    onClick={() => void submitQuestion(example)}
-                  >
-                    {example}
-                  </button>
-                ))}
+        <section
+          className={conversationStarted ? "chat-surface chat-surface-active" : "chat-surface chat-surface-start"}
+          data-testid="chat-surface"
+          aria-label={copy.answer}
+        >
+          {conversationStarted ? (
+            <>
+              <div className="message-stage" ref={messageStageRef}>
+                <div className="space-y-8" data-testid="chat-history">
+                  {turns.map((turn) => (
+                    <ChatExchange
+                      copiedMessageId={copiedMessageId}
+                      copy={copy}
+                      key={turn.id}
+                      language={language}
+                      onCopy={(id, value) => void copyMessage(id, value)}
+                      turn={turn}
+                    />
+                  ))}
+                  {pendingQuestion ? (
+                    <QuestionBubble
+                      copied={copiedMessageId === "pending-question"}
+                      copyLabel={copy.copy}
+                      copiedLabel={copy.copied}
+                      label={copy.question}
+                      onCopy={() => void copyMessage("pending-question", pendingQuestion)}
+                      question={pendingQuestion}
+                    />
+                  ) : null}
+                  {loading ? <ThinkingRow text={copy.thinking} /> : null}
+                </div>
               </div>
-            </div>
-          ) : null}
 
-          <div className="message-stage" onClick={onMessageStageClick} ref={messageStageRef}>
-            {turns.length === 0 ? (
+              {error ? (
+                <div className="error-card" role="alert">
+                  <AlertTriangle aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
+                  <div>
+                    <p className="font-semibold">{copy.error}</p>
+                    <p className="mt-1">{error}</p>
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="chat-actions">
+                <button className="clear-button chat-clear-button" type="button" onClick={clearChat}>
+                  <RotateCcw aria-hidden="true" className="h-4 w-4" />
+                  <span>{copy.clear}</span>
+                </button>
+              </div>
+
+              <Composer
+                copy={copy}
+                loading={loading}
+                onChange={setQuestion}
+                onKeyDown={onComposerKeyDown}
+                onSubmit={onSubmit}
+                question={question}
+                refCallback={(element) => {
+                  composerRef.current = element;
+                }}
+              />
+            </>
+          ) : (
+            <div className="start-screen" onClick={onMessageStageClick}>
               <div className="empty-state">
                 <BookOpen aria-hidden="true" className="h-5 w-5" />
                 <span>{copy.empty}</span>
               </div>
-            ) : (
-              <div className="space-y-8" data-testid="chat-history">
-                {turns.map((turn) => (
-                  <ChatExchange copy={copy} key={turn.id} language={language} turn={turn} />
-                ))}
-              </div>
-            )}
-          </div>
 
-          {error ? (
-            <div className="error-card" role="alert">
-              <AlertTriangle aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
-              <div>
-                <p className="font-semibold">{copy.error}</p>
-                <p className="mt-1">{error}</p>
+              <Composer
+                copy={copy}
+                loading={loading}
+                onChange={setQuestion}
+                onKeyDown={onComposerKeyDown}
+                onSubmit={onSubmit}
+                question={question}
+                refCallback={(element) => {
+                  composerRef.current = element;
+                }}
+              />
+
+              <div className="prompt-card">
+                <div className="prompt-title">{copy.prompts}</div>
+                <div className="prompt-strip" aria-label="Example prompts">
+                  {copy.examples.map((example) => (
+                    <button
+                      className="example-button"
+                      disabled={loading}
+                      key={example}
+                      type="button"
+                      onClick={() => void submitQuestion(example)}
+                    >
+                      {example}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
-          ) : null}
-
-          {loading ? (
-            <div className="loading-row" role="status">
-              <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
-              <span>{copy.thinking}</span>
-            </div>
-          ) : null}
-
-          <form className="composer" onSubmit={onSubmit}>
-            <textarea
-              aria-label={copy.placeholder}
-              className="composer-input"
-              maxLength={2000}
-              onChange={(event) => setQuestion(event.target.value)}
-              onKeyDown={onComposerKeyDown}
-              placeholder={copy.placeholder}
-              ref={composerRef}
-              rows={3}
-              value={question}
-            />
-            <button className="send-button" disabled={loading || !question.trim()} type="submit">
-              <Send aria-hidden="true" className="h-4 w-4" />
-              <span>{copy.send}</span>
-            </button>
-          </form>
+          )}
         </section>
       </main>
 
@@ -284,6 +340,44 @@ function App() {
         </span>
       </footer>
     </div>
+  );
+}
+
+function Composer({
+  copy,
+  loading,
+  onChange,
+  onKeyDown,
+  onSubmit,
+  question,
+  refCallback
+}: {
+  copy: (typeof text)[UiLanguage];
+  loading: boolean;
+  onChange: (value: string) => void;
+  onKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  question: string;
+  refCallback: (element: HTMLTextAreaElement | null) => void;
+}) {
+  return (
+    <form className="composer" onSubmit={onSubmit}>
+      <textarea
+        aria-label={copy.placeholder}
+        className="composer-input"
+        maxLength={2000}
+        onChange={(event) => onChange(event.target.value)}
+        onKeyDown={onKeyDown}
+        placeholder={copy.placeholder}
+        ref={refCallback}
+        rows={3}
+        value={question}
+      />
+      <button className="send-button" disabled={loading || !question.trim()} type="submit">
+        <Send aria-hidden="true" className="h-4 w-4" />
+        <span>{copy.send}</span>
+      </button>
+    </form>
   );
 }
 
@@ -315,37 +409,55 @@ function LanguageSwitch({
 }
 
 function ChatExchange({
+  copiedMessageId,
   copy,
   language,
+  onCopy,
   turn
 }: {
+  copiedMessageId: string | null;
   copy: (typeof text)[UiLanguage];
   language: UiLanguage;
+  onCopy: (id: string, value: string) => void;
   turn: ChatTurn;
 }) {
   const response = turn.response;
   const citations = compactCitations(response.citations);
+  const questionCopyId = `${turn.id}-question`;
+  const answerCopyId = `${turn.id}-answer`;
 
   return (
     <article className="space-y-4">
-      <div className="question-row">
-        <span className="speaker-label">{copy.question}</span>
-        <p>{turn.question}</p>
-      </div>
+      <QuestionBubble
+        copied={copiedMessageId === questionCopyId}
+        copyLabel={copy.copy}
+        copiedLabel={copy.copied}
+        label={copy.question}
+        onCopy={() => onCopy(questionCopyId, turn.question)}
+        question={turn.question}
+      />
 
       <div className={response.refused ? "answer-block answer-refusal" : "answer-block"}>
-        <div className="mb-3 flex flex-wrap items-center gap-2">
-          {response.refused ? (
-            <span className="state-badge state-badge-refusal">
-              <ShieldAlert aria-hidden="true" className="h-4 w-4" />
-              {copy.refusal}
-            </span>
-          ) : (
-            <span className="state-badge state-badge-answer">
-              <CheckCircle2 aria-hidden="true" className="h-4 w-4" />
-              {copy.answer}
-            </span>
-          )}
+        <div className="message-toolbar">
+          <div className="flex flex-wrap items-center gap-2">
+            {response.refused ? (
+              <span className="state-badge state-badge-refusal">
+                <ShieldAlert aria-hidden="true" className="h-4 w-4" />
+                {copy.refusal}
+              </span>
+            ) : (
+              <span className="state-badge state-badge-answer">
+                <CheckCircle2 aria-hidden="true" className="h-4 w-4" />
+                {copy.answer}
+              </span>
+            )}
+          </div>
+          <CopyButton
+            copied={copiedMessageId === answerCopyId}
+            copyLabel={copy.copy}
+            copiedLabel={copy.copied}
+            onClick={() => onCopy(answerCopyId, response.answer)}
+          />
         </div>
 
         <div className="answer-text">
@@ -387,6 +499,64 @@ function ChatExchange({
         </div>
       ) : null}
     </article>
+  );
+}
+
+function QuestionBubble({
+  copied,
+  copyLabel,
+  copiedLabel,
+  label,
+  onCopy,
+  question
+}: {
+  copied: boolean;
+  copyLabel: string;
+  copiedLabel: string;
+  label: string;
+  onCopy: () => void;
+  question: string;
+}) {
+  return (
+    <div className="question-row">
+      <div className="question-meta">
+        <span className="speaker-label">{label}</span>
+        <CopyButton copied={copied} copyLabel={copyLabel} copiedLabel={copiedLabel} onClick={onCopy} />
+      </div>
+      <p>{question}</p>
+    </div>
+  );
+}
+
+function CopyButton({
+  copied,
+  copiedLabel,
+  copyLabel,
+  onClick
+}: {
+  copied: boolean;
+  copiedLabel: string;
+  copyLabel: string;
+  onClick: () => void;
+}) {
+  return (
+    <button className="copy-button" type="button" onClick={onClick}>
+      <Copy aria-hidden="true" className="h-3.5 w-3.5" />
+      <span>{copied ? copiedLabel : copyLabel}</span>
+    </button>
+  );
+}
+
+function ThinkingRow({ text }: { text: string }) {
+  return (
+    <div className="thinking-row" role="status">
+      <span className="thinking-dots" aria-hidden="true">
+        <span />
+        <span />
+        <span />
+      </span>
+      <span>{text}</span>
+    </div>
   );
 }
 

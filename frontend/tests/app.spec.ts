@@ -87,6 +87,7 @@ test("example prompts send a question and show citations", async ({ page }) => {
   await page.goto("/");
 
   await expect(page.getByText("Updated data: 31 Jan 2026")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Clear chat" })).toHaveCount(0);
   await page.getByRole("button", { name: "What should I do after moving to Oslo?" }).click();
 
   await expect(page.getByText("Start with registration, tax, and the relevant Oslo services. [S1]")).toBeVisible();
@@ -99,10 +100,87 @@ test("example prompts send a question and show citations", async ({ page }) => {
   await expect(page.getByRole("button", { name: "What should I do after moving to Oslo?" })).toHaveCount(0);
 });
 
+test("clearing a pending answer prevents stale messages from returning", async ({ page }) => {
+  let requestCount = 0;
+
+  await page.route("**/api/chat", async (route) => {
+    requestCount += 1;
+    const currentRequest = requestCount;
+    await new Promise((resolve) => setTimeout(resolve, currentRequest === 1 ? 450 : 20));
+
+    try {
+      await route.fulfill({
+        json: {
+          answer_id: `answer-${currentRequest}`,
+          answer: currentRequest === 1 ? "This stale answer should not appear. [S1]" : "Fresh answer only. [S1]",
+          refused: false,
+          disclaimer: null,
+          citations: [
+            {
+              citation_id: "S1",
+              chunk_id: `chunk-${currentRequest}`,
+              source_owner: "UDI",
+              source_url: "https://www.udi.no/en/",
+              section_url: "https://www.udi.no/en/#moving",
+              section_heading: "Moving to Norway",
+              collected_at: "2026-02-01T10:00:00Z",
+              official_last_updated_at: "2026-01-20T09:00:00Z"
+            }
+          ],
+          data_currency: {
+            collected_at: "2026-02-01T10:00:00Z",
+            official_last_updated_at: "2026-01-20T09:00:00Z"
+          }
+        }
+      });
+    } catch {
+      // The UI can abort a pending request when the user starts over.
+    }
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "What should I do after moving to Oslo?" }).click();
+  await expect(page.getByText("Checking official sources")).toBeVisible();
+
+  await page.getByRole("button", { name: "Clear chat" }).click();
+  await expect(page.getByRole("button", { name: "How do I get a tax deduction card?" })).toBeVisible();
+  await expect(page.getByText("Checking official sources")).toHaveCount(0);
+  await page.waitForTimeout(520);
+  await expect(page.getByText("This stale answer should not appear. [S1]")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "How do I get a tax deduction card?" }).click();
+  await expect(page.getByText("Fresh answer only. [S1]")).toBeVisible();
+  await expect(page.getByText("This stale answer should not appear. [S1]")).toHaveCount(0);
+});
+
+test("messages can be selected and copied", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: "http://127.0.0.1:5173" });
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "What should I do after moving to Oslo?" }).click();
+  const answer = page.getByText("Start with registration, tax, and the relevant Oslo services. [S1]");
+  const composer = page.getByPlaceholder("Ask about UDI, NAV, tax, work, housing, SUA, or SiO");
+
+  await expect(answer).toBeVisible();
+  await answer.click();
+  await expect(composer).not.toBeFocused();
+
+  await page.locator(".answer-block .copy-button").click();
+  await expect(page.locator(".answer-block .copy-button")).toContainText("Copied");
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(
+    "Start with registration, tax, and the relevant Oslo services. [S1]"
+  );
+
+  await page.locator(".question-row .copy-button").click();
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(
+    "What should I do after moving to Oslo?"
+  );
+});
+
 test("enter sends, shift enter keeps a new line", async ({ page }) => {
   await page.goto("/");
 
-  const composer = page.getByPlaceholder("Ask about UDI, NAV, tax, Oslo services, SUA, or SiO");
+  const composer = page.getByPlaceholder("Ask about UDI, NAV, tax, work, housing, SUA, or SiO");
   await composer.fill("First line");
   await composer.press("Shift+Enter");
   await composer.pressSequentially("second line");
@@ -143,11 +221,13 @@ test("composer stays editable while an answer is pending", async ({ page }) => {
   });
 
   await page.goto("/");
-  const composer = page.getByPlaceholder("Ask about UDI, NAV, tax, Oslo services, SUA, or SiO");
+  const composer = page.getByPlaceholder("Ask about UDI, NAV, tax, work, housing, SUA, or SiO");
 
   await composer.fill("First question");
   await composer.press("Enter");
-  await expect(page.getByText("Checking sources")).toBeVisible();
+  await expect(page.getByText("Checking official sources")).toBeVisible();
+  await expect(page.getByRole("button", { name: "What should I do after moving to Oslo?" })).toHaveCount(0);
+  await expect(page.getByText("First question")).toBeVisible();
 
   await composer.fill("Follow-up typed while waiting");
   await expect(composer).toHaveValue("Follow-up typed while waiting");
@@ -192,7 +272,7 @@ test("language toggle sends Norwegian requests", async ({ page }) => {
 
   await page.goto("/");
   await page.getByRole("button", { name: "NO" }).click();
-  await expect(page.getByPlaceholder("Spør om UDI, NAV, skatt, Oslo-tjenester, SUA eller SiO")).toBeVisible();
+  await expect(page.getByPlaceholder("Spør om UDI, NAV, skatt, arbeid, bolig, SUA eller SiO")).toBeVisible();
 
   await page.getByRole("button", { name: "Hvordan får jeg skattekort?" }).click();
 
@@ -203,7 +283,7 @@ test("language toggle sends Norwegian requests", async ({ page }) => {
 test("refusal and disclaimer states are clear", async ({ page }) => {
   await page.goto("/");
 
-  await page.getByPlaceholder("Ask about UDI, NAV, tax, Oslo services, SUA, or SiO").fill(
+  await page.getByPlaceholder("Ask about UDI, NAV, tax, work, housing, SUA, or SiO").fill(
     "My application was rejected. Should I appeal?"
   );
   await page.getByRole("button", { name: "Send" }).click();
@@ -221,7 +301,7 @@ test("refresh clears the in-memory conversation", async ({ page }) => {
   await page.reload();
 
   await expect(page.getByText("Start with registration, tax, and the relevant Oslo services. [S1]")).toHaveCount(0);
-  await expect(page.getByText("Ask a practical question about moving to Oslo or Norway.")).toBeVisible();
+  await expect(page.getByText("Ask about permits, public services, work, tax, housing, or student life.")).toBeVisible();
 });
 
 test("clear chat and the title reset the conversation", async ({ page }) => {
@@ -242,7 +322,7 @@ test("clear chat and the title reset the conversation", async ({ page }) => {
 
 test("conversation history scrolls without hiding header actions", async ({ page }) => {
   await page.goto("/");
-  const composer = page.getByPlaceholder("Ask about UDI, NAV, tax, Oslo services, SUA, or SiO");
+  const composer = page.getByPlaceholder("Ask about UDI, NAV, tax, work, housing, SUA, or SiO");
 
   for (let index = 0; index < 8; index += 1) {
     await composer.fill(`Housing follow-up ${index}`);
@@ -268,6 +348,6 @@ test("mobile layout keeps the chat controls reachable", async ({ page }) => {
 
   await expect(page.getByRole("heading", { name: "Oslo Newcomer Assistant" })).toBeVisible();
   await expect(page.getByRole("button", { name: "What should I do after moving to Oslo?" })).toBeVisible();
-  await expect(page.getByPlaceholder("Ask about UDI, NAV, tax, Oslo services, SUA, or SiO")).toBeVisible();
+  await expect(page.getByPlaceholder("Ask about UDI, NAV, tax, work, housing, SUA, or SiO")).toBeVisible();
   await expect(page.getByRole("button", { name: "Send" })).toBeVisible();
 });

@@ -11,7 +11,8 @@ export async function fetchSourceSnapshot(): Promise<SourceSnapshot> {
 export async function askQuestion(
   question: string,
   uiLanguage: UiLanguage,
-  sessionHistory: ChatHistoryMessage[]
+  sessionHistory: ChatHistoryMessage[],
+  signal?: AbortSignal
 ): Promise<ChatResponse> {
   const response = await fetch("/api/chat", {
     method: "POST",
@@ -22,7 +23,8 @@ export async function askQuestion(
       question,
       ui_language: uiLanguage,
       session_history: sessionHistory
-    })
+    }),
+    signal
   });
 
   if (!response.ok) {
