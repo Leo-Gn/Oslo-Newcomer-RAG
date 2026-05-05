@@ -15,6 +15,7 @@ venv/
 .coverage
 coverage.xml
 htmlcov/
+eval_reports/
 
 # Node and frontend builds
 node_modules/

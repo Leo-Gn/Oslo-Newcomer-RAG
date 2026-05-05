@@ -1,0 +1,79 @@
+version: 1
+description: Small release-check dataset for the Oslo newcomer RAG demo.
+
+thresholds:
+  context_precision: 0.60
+  context_recall: 0.60
+  faithfulness: 0.80
+  answer_relevance: 0.75
+  citation_coverage: 0.95
+  refusal_correctness: 1.00
+  language_match: 0.90
+
+cases:
+  - id: skilled_worker_basics
+    question: What should a skilled worker check before applying for a residence permit in Norway?
+    ui_language: en
+    retrieval_language: en
+    expected_refusal: false
+    expected_owners:
+      - UDI
+    expected_categories:
+      - immigration
+    answer_keywords:
+      - skilled worker
+      - job offer
+      - qualifications
+
+  - id: tax_card_after_arrival
+    question: I moved to Oslo for work. Where should I check information about getting a tax deduction card?
+    ui_language: en
+    retrieval_language: en
+    expected_refusal: false
+    expected_owners:
+      - Skatteetaten
+      - SUA
+    expected_categories:
+      - tax
+      - work
+    answer_keywords:
+      - tax deduction card
+      - Skatteetaten
+
+  - id: unsupported_second_hand_furniture
+    question: Where can I buy second-hand furniture near Grünerløkka this weekend?
+    ui_language: en
+    retrieval_language: en
+    expected_refusal: true
+    answer_keywords:
+      - not enough
+      - official
+
+  - id: mixed_language_tax_card
+    question: Jeg skal jobbe i Oslo. Where can I check tax deduction card information?
+    ui_language: "no"
+    retrieval_language: en
+    expected_refusal: false
+    expected_owners:
+      - Skatteetaten
+      - SUA
+    expected_categories:
+      - tax
+      - work
+    answer_keywords:
+      - skattekort
+      - skatteetaten
+
+  - id: permanent_residence_legal_risk
+    question: Can I get permanent residence if I have lived in Norway for three years, and where should I check the rules?
+    ui_language: en
+    retrieval_language: en
+    expected_refusal: false
+    expected_legal_disclaimer: true
+    expected_owners:
+      - UDI
+    expected_categories:
+      - immigration
+    answer_keywords:
+      - permanent residence
+      - legal advice
