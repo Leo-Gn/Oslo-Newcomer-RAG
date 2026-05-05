@@ -1,5 +1,6 @@
 import {
   AlertTriangle,
+  ArrowUp,
   BookOpen,
   CheckCircle2,
   Clock,
@@ -7,7 +8,6 @@ import {
   ExternalLink,
   Globe2,
   RotateCcw,
-  Send,
   ShieldAlert
 } from "lucide-react";
 import { FormEvent, KeyboardEvent, MouseEvent, useEffect, useMemo, useRef, useState } from "react";
@@ -17,8 +17,8 @@ import type { ChatHistoryMessage, ChatTurn, SourceSnapshot, UiLanguage } from ".
 
 const text = {
   en: {
-    appName: "Oslo Newcomer Assistant",
-    subtitle: "Official-source answers for immigrants and newcomers in Norway.",
+    appName: "Oslo Newcomer RAG",
+    subtitle: "Navigating Norwegian bureaucracy with official sources.",
     language: "Language",
     examples: [
       "What should I do after moving to Oslo?",
@@ -48,8 +48,8 @@ const text = {
     mobileCheck: "Ready"
   },
   no: {
-    appName: "Oslo Newcomer Assistant",
-    subtitle: "Svar fra offentlige kilder for innvandrere og nykommere i Norge.",
+    appName: "Oslo Newcomer RAG",
+    subtitle: "Navigating Norwegian bureaucracy with official sources.",
     language: "Språk",
     examples: [
       "Hva bør jeg gjøre etter at jeg flytter til Oslo?",
@@ -218,24 +218,23 @@ function App() {
 
   return (
     <div className="app-shell">
-      <header className="topbar">
-        <button className="brand-block" type="button" onClick={clearChat} aria-label={copy.reset}>
-          <p className="eyebrow">Oslo RAG demo</p>
-          <h1>{copy.appName}</h1>
-          <p>{copy.subtitle}</p>
-        </button>
-
-        <div className="topbar-actions">
-          <LanguageSwitch language={language} onChange={setLanguage} label={copy.language} />
-        </div>
-      </header>
-
       <main className="workspace">
         <section
           className={conversationStarted ? "chat-surface chat-surface-active" : "chat-surface chat-surface-start"}
           data-testid="chat-surface"
           aria-label={copy.answer}
         >
+          <header className="topbar">
+            <button className="brand-block" type="button" onClick={clearChat} aria-label={copy.reset}>
+              <h1>{copy.appName}</h1>
+              <p>{copy.subtitle}</p>
+            </button>
+
+            <div className="topbar-actions">
+              <LanguageSwitch language={language} onChange={setLanguage} label={copy.language} />
+            </div>
+          </header>
+
           {conversationStarted ? (
             <>
               <div className="message-stage" ref={messageStageRef}>
@@ -274,17 +273,12 @@ function App() {
                 </div>
               ) : null}
 
-              <div className="chat-actions">
-                <button className="clear-button chat-clear-button" type="button" onClick={clearChat}>
-                  <RotateCcw aria-hidden="true" className="h-4 w-4" />
-                  <span>{copy.clear}</span>
-                </button>
-              </div>
-
               <Composer
+                clearLabel={copy.clear}
                 copy={copy}
                 loading={loading}
                 onChange={setQuestion}
+                onClear={clearChat}
                 onKeyDown={onComposerKeyDown}
                 onSubmit={onSubmit}
                 question={question}
@@ -344,17 +338,21 @@ function App() {
 }
 
 function Composer({
+  clearLabel,
   copy,
   loading,
   onChange,
+  onClear,
   onKeyDown,
   onSubmit,
   question,
   refCallback
 }: {
+  clearLabel?: string;
   copy: (typeof text)[UiLanguage];
   loading: boolean;
   onChange: (value: string) => void;
+  onClear?: () => void;
   onKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   question: string;
@@ -370,13 +368,25 @@ function Composer({
         onKeyDown={onKeyDown}
         placeholder={copy.placeholder}
         ref={refCallback}
-        rows={3}
+        rows={2}
         value={question}
       />
-      <button className="send-button" disabled={loading || !question.trim()} type="submit">
-        <Send aria-hidden="true" className="h-4 w-4" />
-        <span>{copy.send}</span>
-      </button>
+      <div className="composer-actions">
+        {onClear && clearLabel ? (
+          <button
+            aria-label={clearLabel}
+            className="composer-icon-button composer-reset-button"
+            type="button"
+            onClick={onClear}
+          >
+            <RotateCcw aria-hidden="true" className="h-4 w-4" />
+          </button>
+        ) : null}
+        <button className="send-button" disabled={loading || !question.trim()} type="submit">
+          <ArrowUp aria-hidden="true" className="h-5 w-5" />
+          <span>{copy.send}</span>
+        </button>
+      </div>
     </form>
   );
 }

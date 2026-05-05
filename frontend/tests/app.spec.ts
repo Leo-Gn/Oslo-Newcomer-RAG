@@ -315,7 +315,7 @@ test("clear chat and the title reset the conversation", async ({ page }) => {
   await expect(page.getByRole("button", { name: "What should I do after moving to Oslo?" })).toBeVisible();
 
   await page.getByRole("button", { name: "What should I do after moving to Oslo?" }).click();
-  await page.getByRole("heading", { name: "Oslo Newcomer Assistant" }).click();
+  await page.getByRole("heading", { name: "Oslo Newcomer RAG" }).click();
   await expect(page.getByText("Start with registration, tax, and the relevant Oslo services. [S1]")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Where can students find housing support?" })).toBeVisible();
 });
@@ -346,7 +346,7 @@ test("mobile layout keeps the chat controls reachable", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
 
-  await expect(page.getByRole("heading", { name: "Oslo Newcomer Assistant" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Oslo Newcomer RAG" })).toBeVisible();
   await expect(page.getByRole("button", { name: "What should I do after moving to Oslo?" })).toBeVisible();
   await expect(page.getByPlaceholder("Ask about UDI, NAV, tax, work, housing, SUA, or SiO")).toBeVisible();
   await expect(page.getByRole("button", { name: "Send" })).toBeVisible();
