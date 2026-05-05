@@ -12,6 +12,7 @@ from typing import Any, Protocol
 import yaml
 from sqlalchemy.orm import Session
 
+from oslo_newcomer_rag.chat_flow import build_direct_answer, build_retrieval_query
 from oslo_newcomer_rag.config import Settings, get_settings
 from oslo_newcomer_rag.db.session import create_engine_from_settings
 from oslo_newcomer_rag.generation import (
@@ -27,7 +28,9 @@ from oslo_newcomer_rag.retrieval import (
     RetrievalFilters,
     RetrievalResult,
     RetrievedChunk,
+    expand_retrieval_terms,
     retrieve_chunks,
+    retrieve_chunks_with_language_fallback,
 )
 
 
@@ -82,6 +85,8 @@ class GoldCase:
     expected_categories: tuple[str, ...]
     expected_source_urls: tuple[str, ...]
     answer_keywords: tuple[str, ...]
+    expected_retrieval: bool
+    session_history: tuple[ChatMessage, ...]
 
     @classmethod
     def from_mapping(cls, values: dict[str, Any]) -> "GoldCase":
@@ -110,6 +115,8 @@ class GoldCase:
             expected_categories=_string_tuple(values.get("expected_categories", ())),
             expected_source_urls=_string_tuple(values.get("expected_source_urls", ())),
             answer_keywords=_string_tuple(values.get("answer_keywords", ())),
+            expected_retrieval=bool(values.get("expected_retrieval", True)),
+            session_history=_history_tuple(values.get("session_history", ())),
         )
         case.validate()
         return case
@@ -119,7 +126,7 @@ class GoldCase:
             raise ValueError("Gold case id cannot be empty")
         if not self.question.strip():
             raise ValueError(f"{self.id} question cannot be empty")
-        if not self.expected_refusal and not self.expected_evidence:
+        if not self.expected_refusal and self.expected_retrieval and not self.expected_evidence:
             raise ValueError(f"{self.id} must name expected evidence for a supported answer")
 
     @property
@@ -377,19 +384,35 @@ def run_live_evaluation(
     try:
         with Session(engine) as session:
             for case in cases:
-                retrieval = retrieve_chunks(
-                    session,
-                    embedder,
-                    case.question,
-                    filters=RetrievalFilters(language=case.retrieval_language),
-                    log_query=False,
-                )
-                answer = build_grounded_answer(
-                    question=case.question,
-                    ui_language=case.ui_language,
-                    retrieval=retrieval,
-                    chat_client=chat_client,
-                )
+                direct_answer = build_direct_answer(case.question, case.ui_language)
+                if direct_answer:
+                    retrieval = RetrievalResult(query=case.question, chunks=[], low_confidence=True)
+                    answer = direct_answer
+                else:
+                    retrieval_query = build_retrieval_query(case.question, case.session_history)
+                    if case.retrieval_language == case.ui_language:
+                        retrieval = retrieve_chunks_with_language_fallback(
+                            session,
+                            embedder,
+                            retrieval_query,
+                            preferred_language=case.ui_language,
+                            log_query=False,
+                        )
+                    else:
+                        retrieval = retrieve_chunks(
+                            session,
+                            embedder,
+                            expand_retrieval_terms(retrieval_query),
+                            filters=RetrievalFilters(language=case.retrieval_language),
+                            log_query=False,
+                        )
+                    answer = build_grounded_answer(
+                        question=case.question,
+                        ui_language=case.ui_language,
+                        retrieval=retrieval,
+                        chat_client=chat_client,
+                        session_history=case.session_history,
+                    )
                 results.append(
                     evaluate_case(
                         case=case,
@@ -412,6 +435,8 @@ def run_live_evaluation(
 
 
 def context_precision(case: GoldCase, retrieval: RetrievalResult) -> float:
+    if not case.expected_retrieval:
+        return 1.0 if retrieval.low_confidence or not retrieval.chunks else 0.0
     if retrieval.low_confidence or not retrieval.chunks:
         return 1.0 if case.expected_refusal else 0.0
     if not case.expected_evidence:
@@ -421,6 +446,8 @@ def context_precision(case: GoldCase, retrieval: RetrievalResult) -> float:
 
 
 def context_recall(case: GoldCase, retrieval: RetrievalResult) -> float:
+    if not case.expected_retrieval:
+        return 1.0 if retrieval.low_confidence or not retrieval.chunks else 0.0
     if case.expected_refusal:
         return 1.0 if retrieval.low_confidence or not retrieval.chunks else 0.0
     expected = case.expected_evidence
@@ -434,6 +461,8 @@ def context_recall(case: GoldCase, retrieval: RetrievalResult) -> float:
 
 
 def citation_coverage(answer: GroundedAnswer, retrieval: RetrievalResult) -> float:
+    if not retrieval.chunks and not answer.refused:
+        return 1.0 if not answer.citations else 0.0
     if answer.refused:
         return 1.0 if not answer.citations else 0.0
     if not answer.citations:
@@ -599,6 +628,7 @@ def _case_result_dict(result: CaseResult) -> dict[str, Any]:
         "ui_language": result.case.ui_language,
         "retrieval_language": result.case.retrieval_language,
         "expected_refusal": result.case.expected_refusal,
+        "expected_retrieval": result.case.expected_retrieval,
         "refused": result.answer.refused,
         "metrics": result.metrics.as_dict(),
         "judge": {
@@ -704,3 +734,22 @@ def _string_tuple(value: Any) -> tuple[str, ...]:
     if not isinstance(value, list | tuple):
         raise ValueError("Expected a list of strings")
     return tuple(str(item).strip() for item in value if str(item).strip())
+
+
+def _history_tuple(value: Any) -> tuple[ChatMessage, ...]:
+    if value in (None, ""):
+        return ()
+    if not isinstance(value, list | tuple):
+        raise ValueError("Expected session_history to be a list")
+
+    messages: list[ChatMessage] = []
+    for item in value:
+        if not isinstance(item, dict):
+            raise ValueError("Expected session_history items to be mappings")
+        role = str(item.get("role") or "").strip()
+        content = str(item.get("content") or "").strip()
+        if role not in {"user", "assistant"}:
+            raise ValueError("Expected session_history role to be user or assistant")
+        if content:
+            messages.append(ChatMessage(role=role, content=content))
+    return tuple(messages)

@@ -88,7 +88,8 @@ test("example prompts send a question and show citations", async ({ page }) => {
 
   await expect(page.getByText("Updated data: 31 Jan 2026")).toBeVisible();
   await expect(page.getByRole("button", { name: "Clear chat" })).toHaveCount(0);
-  await page.getByRole("button", { name: "What should I do after moving to Oslo?" }).click();
+  await expect(page.locator(".example-button")).toHaveCount(5);
+  await page.locator(".example-button").first().click();
 
   await expect(page.getByText("Start with registration, tax, and the relevant Oslo services. [S1]")).toBeVisible();
   await expect(page.getByTestId("citation-list")).toContainText("UDI");
@@ -97,7 +98,27 @@ test("example prompts send a question and show citations", async ({ page }) => {
     "href",
     "https://www.udi.no/en/#moving"
   );
-  await expect(page.getByRole("button", { name: "What should I do after moving to Oslo?" })).toHaveCount(0);
+  await expect(page.locator(".example-button")).toHaveCount(0);
+});
+
+test("example prompts are reshuffled on reload", async ({ page }) => {
+  await page.addInitScript(() => {
+    let calls = 0;
+    Math.random = () => {
+      calls += 1;
+      return sessionStorage.getItem("prompt-run") === "second" ? 0.92 - calls * 0.01 : 0.04 + calls * 0.01;
+    };
+  });
+
+  await page.goto("/");
+  const firstSet = await page.locator(".example-button").allInnerTexts();
+  await page.evaluate(() => sessionStorage.setItem("prompt-run", "second"));
+  await page.reload();
+  const secondSet = await page.locator(".example-button").allInnerTexts();
+
+  expect(firstSet).toHaveLength(5);
+  expect(secondSet).toHaveLength(5);
+  expect(secondSet).not.toEqual(firstSet);
 });
 
 test("clearing a pending answer prevents stale messages from returning", async ({ page }) => {
@@ -139,16 +160,16 @@ test("clearing a pending answer prevents stale messages from returning", async (
   });
 
   await page.goto("/");
-  await page.getByRole("button", { name: "What should I do after moving to Oslo?" }).click();
+  await page.locator(".example-button").first().click();
   await expect(page.getByText("Checking official sources")).toBeVisible();
 
   await page.getByRole("button", { name: "Clear chat" }).click();
-  await expect(page.getByRole("button", { name: "How do I get a tax deduction card?" })).toBeVisible();
+  await expect(page.locator(".example-button")).toHaveCount(5);
   await expect(page.getByText("Checking official sources")).toHaveCount(0);
   await page.waitForTimeout(520);
   await expect(page.getByText("This stale answer should not appear. [S1]")).toHaveCount(0);
 
-  await page.getByRole("button", { name: "How do I get a tax deduction card?" }).click();
+  await page.locator(".example-button").first().click();
   await expect(page.getByText("Fresh answer only. [S1]")).toBeVisible();
   await expect(page.getByText("This stale answer should not appear. [S1]")).toHaveCount(0);
 });
@@ -157,7 +178,8 @@ test("messages can be selected and copied", async ({ page, context }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: "http://127.0.0.1:5173" });
   await page.goto("/");
 
-  await page.getByRole("button", { name: "What should I do after moving to Oslo?" }).click();
+  const promptText = (await page.locator(".example-button").first().innerText()).trim();
+  await page.locator(".example-button").first().click();
   const answer = page.getByText("Start with registration, tax, and the relevant Oslo services. [S1]");
   const composer = page.getByPlaceholder("Type your question here...");
 
@@ -172,9 +194,7 @@ test("messages can be selected and copied", async ({ page, context }) => {
   );
 
   await page.locator(".question-row .copy-button").click();
-  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(
-    "What should I do after moving to Oslo?"
-  );
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(promptText);
 });
 
 test("feedback buttons submit only answer metadata", async ({ page }) => {
@@ -193,7 +213,7 @@ test("feedback buttons submit only answer metadata", async ({ page }) => {
   });
 
   await page.goto("/");
-  await page.getByRole("button", { name: "What should I do after moving to Oslo?" }).click();
+  await page.locator(".example-button").first().click();
   await expect(page.getByText("Start with registration, tax, and the relevant Oslo services. [S1]")).toBeVisible();
 
   await page.getByRole("button", { name: "Helpful", exact: true }).click();
@@ -269,7 +289,7 @@ test("composer stays editable while an answer is pending", async ({ page }) => {
   await composer.fill("First question");
   await composer.press("Enter");
   await expect(page.getByText("Checking official sources")).toBeVisible();
-  await expect(page.getByRole("button", { name: "What should I do after moving to Oslo?" })).toHaveCount(0);
+  await expect(page.locator(".example-button")).toHaveCount(0);
   await expect(page.getByText("First question")).toBeVisible();
 
   await composer.fill("Follow-up typed while waiting");
@@ -318,10 +338,62 @@ test("language toggle sends Norwegian requests", async ({ page }) => {
   await expect(page.getByPlaceholder("Skriv spørsmålet ditt her...")).toBeVisible();
   await expect(page.getByText("Hjelper deg med norsk byråkrati via offentlige kilder.")).toBeVisible();
 
-  await page.getByRole("button", { name: "Hvordan får jeg skattekort?" }).click();
+  await expect(page.locator(".example-button")).toHaveCount(5);
+  await page.locator(".example-button").first().click();
 
   await expect.poll(() => postedLanguage).toBe("no");
   await expect(page.getByText("Du kan starte med offentlige kilder. [S1]")).toBeVisible();
+});
+
+test("follow-up questions send session history", async ({ page }) => {
+  const requests: unknown[] = [];
+
+  await page.route("**/api/chat", async (route) => {
+    const request = route.request().postDataJSON();
+    requests.push(request);
+    await route.fulfill({
+      json: {
+        answer_id: `answer-${requests.length}`,
+        answer: requests.length === 1 ? "Students can check SiO housing. [S1]" : "They can also check Oslo housing information. [S1]",
+        refused: false,
+        disclaimer: null,
+        citations: [
+          {
+            citation_id: "S1",
+            chunk_id: "chunk-1",
+            source_owner: "SiO",
+            source_url: "https://sio.no/en/",
+            section_url: "https://bolig.sio.no/en/",
+            section_heading: "Student housing",
+            collected_at: "2026-02-01T10:00:00Z",
+            official_last_updated_at: "2026-01-20T09:00:00Z"
+          }
+        ],
+        data_currency: {
+          collected_at: "2026-02-01T10:00:00Z",
+          official_last_updated_at: "2026-01-20T09:00:00Z"
+        }
+      }
+    });
+  });
+
+  await page.goto("/");
+  await page.getByPlaceholder("Type your question here...").fill("Where can students find housing support?");
+  await page.getByRole("button", { name: "Send" }).click();
+  await expect(page.getByText("Students can check SiO housing. [S1]")).toBeVisible();
+
+  await page.getByPlaceholder("Type your question here...").fill("Anywhere else?");
+  await page.getByRole("button", { name: "Send" }).click();
+  await expect(page.getByText("They can also check Oslo housing information. [S1]")).toBeVisible();
+
+  expect(requests).toHaveLength(2);
+  expect(requests[1]).toMatchObject({
+    question: "Anywhere else?",
+    session_history: [
+      { role: "user", content: "Where can students find housing support?" },
+      { role: "assistant", content: "Students can check SiO housing. [S1]" }
+    ]
+  });
 });
 
 test("theme toggle starts light and switches to dark", async ({ page }) => {
@@ -349,7 +421,7 @@ test("refusal and disclaimer states are clear", async ({ page }) => {
 test("refresh clears the in-memory conversation", async ({ page }) => {
   await page.goto("/");
 
-  await page.getByRole("button", { name: "What should I do after moving to Oslo?" }).click();
+  await page.locator(".example-button").first().click();
   await expect(page.getByText("Start with registration, tax, and the relevant Oslo services. [S1]")).toBeVisible();
 
   await page.reload();
@@ -361,17 +433,17 @@ test("refresh clears the in-memory conversation", async ({ page }) => {
 test("clear chat and the title reset the conversation", async ({ page }) => {
   await page.goto("/");
 
-  await page.getByRole("button", { name: "What should I do after moving to Oslo?" }).click();
+  await page.locator(".example-button").first().click();
   await expect(page.getByText("Start with registration, tax, and the relevant Oslo services. [S1]")).toBeVisible();
 
   await page.getByRole("button", { name: "Clear chat" }).click();
   await expect(page.getByText("Start with registration, tax, and the relevant Oslo services. [S1]")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "What should I do after moving to Oslo?" })).toBeVisible();
+  await expect(page.locator(".example-button")).toHaveCount(5);
 
-  await page.getByRole("button", { name: "What should I do after moving to Oslo?" }).click();
+  await page.locator(".example-button").first().click();
   await page.getByRole("heading", { name: "Oslo Newcomer RAG" }).click();
   await expect(page.getByText("Start with registration, tax, and the relevant Oslo services. [S1]")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Where can students find housing support?" })).toBeVisible();
+  await expect(page.locator(".example-button")).toHaveCount(5);
 });
 
 test("conversation history scrolls without hiding header actions", async ({ page }) => {
@@ -393,7 +465,7 @@ test("conversation history scrolls without hiding header actions", async ({ page
 
   expect(scrollInfo.height).toBeGreaterThan(scrollInfo.client);
   await page.getByRole("button", { name: "Clear chat" }).click();
-  await expect(page.getByRole("button", { name: "What should I do after moving to Oslo?" })).toBeVisible();
+  await expect(page.locator(".example-button")).toHaveCount(5);
 });
 
 test("mobile layout keeps the chat controls reachable", async ({ page }) => {
@@ -401,7 +473,7 @@ test("mobile layout keeps the chat controls reachable", async ({ page }) => {
   await page.goto("/");
 
   await expect(page.getByRole("heading", { name: "Oslo Newcomer RAG" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "What should I do after moving to Oslo?" })).toBeVisible();
+  await expect(page.locator(".example-button")).toHaveCount(5);
   await expect(page.getByPlaceholder("Type your question here...")).toBeVisible();
   await expect(page.getByRole("button", { name: "Send" })).toBeVisible();
 });

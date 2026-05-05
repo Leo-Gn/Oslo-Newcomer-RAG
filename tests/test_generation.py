@@ -11,6 +11,7 @@ from oslo_newcomer_rag.generation import (
     ChatMessage,
     OpenAICompatibleChatClient,
     build_grounded_answer,
+    direct_chat_answer,
     needs_legal_disclaimer,
 )
 from oslo_newcomer_rag.retrieval import RetrievedChunk, RetrievalResult
@@ -51,6 +52,24 @@ def test_supported_answer_includes_citations_and_data_currency() -> None:
     assert answer.citations[0].section_heading == "Moving to Norway"
     assert answer.data_currency.collected_at == datetime(2026, 2, 1, tzinfo=UTC)
     assert answer.data_currency.official_last_updated_at == datetime(2026, 1, 20, tzinfo=UTC)
+
+
+def test_greeting_returns_scoped_answer_without_model_call() -> None:
+    answer = direct_chat_answer("hi", "en")
+
+    assert answer is not None
+    assert answer.refused is False
+    assert answer.citations == []
+    assert "moving to Oslo" in answer.answer
+
+
+def test_norwegian_greeting_uses_requested_language() -> None:
+    answer = direct_chat_answer("Hei!", "no")
+
+    assert answer is not None
+    assert answer.refused is False
+    assert answer.citations == []
+    assert "skattekort" in answer.answer
 
 
 def test_chat_client_uses_openai_compatible_chat_completion_endpoint() -> None:

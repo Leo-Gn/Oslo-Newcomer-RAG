@@ -29,7 +29,18 @@ const text = {
     examples: [
       "What should I do after moving to Oslo?",
       "How do I get a tax deduction card?",
-      "Where can students find housing support?"
+      "Where can students find housing support?",
+      "How do I get a national identity number or D number?",
+      "Where can I check residence card information?",
+      "What should EU or EEA citizens check before working in Norway?",
+      "Where can I read about family immigration?",
+      "What should skilled workers check before applying?",
+      "Where can I check information about permanent residence?",
+      "Where can I check citizenship rules?",
+      "How can I find a GP or healthcare information in Oslo?",
+      "Where can I learn Norwegian in Oslo?",
+      "What should families check after moving to Oslo?",
+      "Where can I book an appointment as a foreign worker?"
     ],
     placeholder: "Type your question here...",
     send: "Send",
@@ -66,7 +77,18 @@ const text = {
     examples: [
       "Hva bør jeg gjøre etter at jeg flytter til Oslo?",
       "Hvordan får jeg skattekort?",
-      "Hvor kan studenter finne hjelp med bolig?"
+      "Hvor kan studenter finne hjelp med bolig?",
+      "Hvordan får jeg fødselsnummer eller D-nummer?",
+      "Hvor kan jeg sjekke informasjon om oppholdskort?",
+      "Hva bør EU- eller EØS-borgere sjekke før de jobber i Norge?",
+      "Hvor kan jeg lese om familieinnvandring?",
+      "Hva bør faglærte arbeidstakere sjekke før de søker?",
+      "Hvor kan jeg sjekke informasjon om permanent opphold?",
+      "Hvor kan jeg sjekke regler om statsborgerskap?",
+      "Hvordan finner jeg fastlege eller helseinformasjon i Oslo?",
+      "Hvor kan jeg lære norsk i Oslo?",
+      "Hva bør familier sjekke etter flytting til Oslo?",
+      "Hvor kan jeg bestille time som utenlandsk arbeidstaker?"
     ],
     placeholder: "Skriv spørsmålet ditt her...",
     send: "Send",
@@ -96,6 +118,8 @@ const text = {
   }
 } as const;
 
+const VISIBLE_EXAMPLE_COUNT = 5;
+
 type FeedbackStatus = {
   rating: FeedbackRating | null;
   pending: boolean;
@@ -121,6 +145,7 @@ function App() {
 
   const copy = text[language];
   const history = useMemo(() => buildHistory(turns), [turns]);
+  const examples = useMemo(() => selectExamplePrompts(copy.examples), [language]);
   const dataUpdatedAt = useMemo(() => latestUpdateDate(snapshot, turns), [snapshot, turns]);
   const conversationStarted = turns.length > 0 || Boolean(pendingQuestion) || Boolean(error);
 
@@ -376,7 +401,7 @@ function App() {
               <div className="prompt-card">
                 <div className="prompt-title">{copy.prompts}</div>
                 <div className="prompt-strip" aria-label="Example prompts">
-                  {copy.examples.map((example) => (
+                  {examples.map((example) => (
                     <button
                       className="example-button"
                       disabled={loading}
@@ -702,6 +727,15 @@ function ThinkingRow({ text }: { text: string }) {
       <span>{text}</span>
     </div>
   );
+}
+
+function selectExamplePrompts(examples: readonly string[]) {
+  const shuffled = [...examples];
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
+  }
+  return shuffled.slice(0, VISIBLE_EXAMPLE_COUNT);
 }
 
 function buildHistory(turns: ChatTurn[]): ChatHistoryMessage[] {

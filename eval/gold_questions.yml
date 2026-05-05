@@ -11,6 +11,16 @@ thresholds:
   language_match: 0.90
 
 cases:
+  - id: greeting_english
+    question: hi
+    ui_language: en
+    retrieval_language: en
+    expected_refusal: false
+    expected_retrieval: false
+    answer_keywords:
+      - help
+      - Oslo
+
   - id: skilled_worker_basics
     question: What should a skilled worker check before applying for a residence permit in Norway?
     ui_language: en
@@ -63,6 +73,54 @@ cases:
     answer_keywords:
       - skattekort
       - skatteetaten
+
+  - id: norwegian_tax_card
+    question: Hvordan får jeg skattekort når jeg skal jobbe i Oslo?
+    ui_language: "no"
+    retrieval_language: en
+    expected_refusal: false
+    expected_owners:
+      - Skatteetaten
+      - SUA
+    expected_categories:
+      - tax
+      - work
+    answer_keywords:
+      - skattekort
+      - skatteetaten
+
+  - id: norwegian_citizenship_check
+    question: Hvor kan jeg sjekke når jeg kan søke om norsk statsborgerskap?
+    ui_language: "no"
+    retrieval_language: en
+    expected_refusal: false
+    expected_owners:
+      - UDI
+    expected_categories:
+      - immigration
+    answer_keywords:
+      - statsborgerskap
+      - UDI
+
+  - id: follow_up_student_housing
+    question: Anywhere else?
+    ui_language: en
+    retrieval_language: en
+    expected_refusal: false
+    session_history:
+      - role: user
+        content: Where can students find housing support?
+      - role: assistant
+        content: Students can check SiO student housing and Oslo accommodation pages.
+    expected_owners:
+      - SiO
+      - Oslo kommune
+    expected_categories:
+      - student_services
+      - municipal_services
+    answer_keywords:
+      - housing
+      - student
 
   - id: permanent_residence_legal_risk
     question: Can I get permanent residence if I have lived in Norway for three years, and where should I check the rules?

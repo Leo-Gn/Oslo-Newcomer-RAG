@@ -37,6 +37,10 @@ def test_gold_dataset_loads_current_release_cases() -> None:
     assert dataset.version == 1
     assert "skilled_worker_basics" in case_ids
     assert "unsupported_second_hand_furniture" in case_ids
+    assert "greeting_english" in case_ids
+    assert "norwegian_tax_card" in case_ids
+    assert "norwegian_citizenship_check" in case_ids
+    assert "follow_up_student_housing" in case_ids
     assert "mixed_language_tax_card" in case_ids
     assert "permanent_residence_legal_risk" in case_ids
     assert dataset.thresholds.citation_coverage == 0.95
@@ -167,7 +171,7 @@ cases:
         def add(self, row) -> None:
             calls["stored"] = True
 
-    def fake_retrieve(session, embedder, query, *, filters, log_query):
+    def fake_retrieve(session, embedder, query, *, preferred_language, log_query):
         calls["log_query"] = log_query
         return retrieved
 
@@ -179,7 +183,7 @@ cases:
     monkeypatch.setattr("oslo_newcomer_rag.evaluation.OpenAICompatibleEmbeddingClient", lambda settings: FakeClient())
     monkeypatch.setattr("oslo_newcomer_rag.evaluation.OpenAICompatibleChatClient", lambda settings: FakeClient())
     monkeypatch.setattr("oslo_newcomer_rag.evaluation.LlmJudge", lambda chat_client: StaticJudge(JudgeScores(1, 1, "ok")))
-    monkeypatch.setattr("oslo_newcomer_rag.evaluation.retrieve_chunks", fake_retrieve)
+    monkeypatch.setattr("oslo_newcomer_rag.evaluation.retrieve_chunks_with_language_fallback", fake_retrieve)
     monkeypatch.setattr("oslo_newcomer_rag.evaluation.build_grounded_answer", fake_answer)
 
     report = run_live_evaluation(
@@ -206,6 +210,7 @@ def _case(
     expected_owners: tuple[str, ...] = ("UDI",),
     expected_categories: tuple[str, ...] = ("immigration",),
     answer_keywords: tuple[str, ...] = (),
+    expected_retrieval: bool = True,
 ) -> GoldCase:
     return GoldCase(
         id="case",
@@ -218,6 +223,8 @@ def _case(
         expected_categories=expected_categories,
         expected_source_urls=(),
         answer_keywords=answer_keywords,
+        expected_retrieval=expected_retrieval,
+        session_history=(),
     )
 
 

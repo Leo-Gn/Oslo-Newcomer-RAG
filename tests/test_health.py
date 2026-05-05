@@ -84,3 +84,16 @@ def test_chat_endpoint_requires_configured_database() -> None:
 
     assert response.status_code == 503
     assert response.json()["detail"] == "DATABASE_URL is not configured"
+
+
+def test_chat_endpoint_answers_greeting_without_database() -> None:
+    app = create_app(Settings(app_env="test"))
+    client = TestClient(app)
+
+    response = client.post("/api/chat", json={"question": "hei", "ui_language": "no"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["refused"] is False
+    assert body["citations"] == []
+    assert "skattekort" in body["answer"]

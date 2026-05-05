@@ -40,6 +40,20 @@ LEGAL_RISK_TERMS = (
     "søknaden min",
     "kan jeg få",
 )
+GREETING_TERMS = {
+    "hi",
+    "hello",
+    "hey",
+    "good morning",
+    "good afternoon",
+    "good evening",
+    "hei",
+    "heisann",
+    "hallo",
+    "god morgen",
+    "god dag",
+    "god kveld",
+}
 
 
 @dataclass(frozen=True)
@@ -74,6 +88,41 @@ class GroundedAnswer:
     disclaimer: str | None
     citations: list[Citation]
     data_currency: DataCurrency
+
+
+def direct_chat_answer(question: str, ui_language: str) -> GroundedAnswer | None:
+    language = _normalise_language(ui_language)
+    if not is_greeting(question):
+        return None
+
+    if language == "no":
+        answer = (
+            "Hei! Jeg kan hjelpe med spørsmål om å flytte til Oslo, oppholdstillatelser, "
+            "skattekort, ID-nummer, arbeid, bolig, helsetjenester og studentressurser. "
+            "Still gjerne et konkret spørsmål, så sjekker jeg de lagrede offentlige kildene."
+        )
+    else:
+        answer = (
+            "Hi! I can help with questions about moving to Oslo, residence permits, tax cards, "
+            "ID numbers, work, housing, healthcare, and student resources. Ask a concrete question, "
+            "and I will check the stored official sources."
+        )
+
+    return GroundedAnswer(
+        answer_id=str(uuid.uuid4()),
+        answer=answer,
+        refused=False,
+        disclaimer=None,
+        citations=[],
+        data_currency=DataCurrency(collected_at=None, official_last_updated_at=None),
+    )
+
+
+def is_greeting(question: str) -> bool:
+    cleaned = re.sub(r"[!?.\s,]+", " ", question.casefold()).strip()
+    if not cleaned:
+        return False
+    return cleaned in GREETING_TERMS
 
 
 class ChatConfigError(RuntimeError):
@@ -243,8 +292,13 @@ def _build_prompt(
 
     system = (
         "You answer for a public demo about moving to Oslo and Norway. "
-        "Use only the supplied official source excerpts. Keep the language simple, around B1/B2. "
+        "Use only the supplied official source excerpts for factual public-service information. "
+        "Keep the language simple, around B1/B2. "
         "Do not decide eligibility, fill forms, or invent missing rules. "
+        "For follow-up questions, use the session history only to understand what the user refers to; "
+        "the factual answer must still come from the source excerpts. "
+        "If the answer language differs from the source language, translate only supported details. "
+        "If the excerpts partly answer the question, give the supported part instead of refusing. "
         "Every factual sentence about public rules, documents, dates, fees, services, or procedures "
         "must include a source marker like [S1]. "
         "Return only JSON with keys: answer, refusal."
@@ -255,7 +309,7 @@ def _build_prompt(
         f"Session history, if useful for context only:\n{history}\n\n"
         f"Official source excerpts:\n{context}\n\n"
         f"{disclaimer_rule}\n"
-        "If the excerpts do not support the answer, set refusal to true and write a short refusal."
+        "Set refusal to true only when the excerpts do not support any useful answer to the question."
     )
     return [ChatMessage(role="system", content=system), ChatMessage(role="user", content=user)]
 

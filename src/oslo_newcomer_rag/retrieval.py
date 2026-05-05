@@ -30,6 +30,38 @@ DEFAULT_RESULT_LIMIT = 6
 MAX_EMBEDDING_RETRY_ATTEMPTS = 6
 INITIAL_RETRY_SECONDS = 2.0
 MAX_RETRY_SECONDS = 60.0
+RETRIEVAL_GLOSSARY = {
+    "skattekort": ("tax deduction card", "tax card"),
+    "oppholdstillatelse": ("residence permit", "immigration permit"),
+    "oppholdskort": ("residence card",),
+    "statsborgerskap": ("citizenship", "Norwegian citizenship"),
+    "familieinnvandring": ("family immigration",),
+    "studentbolig": ("student housing",),
+    "fastlege": ("general practitioner", "GP", "healthcare"),
+    "d-nummer": ("D number", "identification number"),
+    "d nummer": ("D number", "identification number"),
+    "fødselsnummer": ("national identity number", "identification number"),
+    "personnummer": ("national identity number",),
+    "eøs": ("EU EEA", "right of residence"),
+    "eu/eøs": ("EU EEA", "right of residence"),
+    "arbeidstillatelse": ("work permit", "work immigration"),
+    "permanent opphold": ("permanent residence",),
+    "norskkurs": ("Norwegian language course", "learn Norwegian"),
+    "barnehage": ("kindergarten", "children families"),
+    "flytter": ("moving to Norway", "first steps"),
+    "skatt": ("tax",),
+    "bolig": ("housing", "accommodation"),
+    "studenter": ("students", "student services"),
+    "student": ("student", "student services"),
+    "helse": ("healthcare", "health services"),
+    "helsetjenester": ("healthcare services",),
+    "lære norsk": ("learn Norwegian", "Norwegian language course"),
+    "faglært": ("skilled worker",),
+    "faglærte": ("skilled workers",),
+    "familier": ("children families",),
+    "bestille time": ("book appointment", "appointment booking"),
+    "utenlandsk arbeidstaker": ("foreign worker", "service centre foreign workers"),
+}
 
 
 @dataclass(frozen=True)
@@ -71,6 +103,7 @@ class RetrievalResult:
     query: str
     chunks: list[RetrievedChunk]
     low_confidence: bool
+    language_fallback_used: bool = False
 
 
 @dataclass(frozen=True)
@@ -261,20 +294,14 @@ def retrieve_chunks(
     if not clean_query:
         return RetrievalResult(query=query, chunks=[], low_confidence=True)
 
-    query_vector = embedder.embed_query(clean_query)
-    vector_rows = _vector_candidates(
+    ranked = _rank_chunks(
         session,
-        query_vector=query_vector,
-        filters=active_filters,
-        limit=candidate_limit,
-    )
-    keyword_rows = _keyword_candidates(
-        session,
+        embedder=embedder,
         query=clean_query,
         filters=active_filters,
-        limit=candidate_limit,
+        limit=limit,
+        candidate_limit=candidate_limit,
     )
-    ranked = _merge_rankings(vector_rows, keyword_rows, limit=limit)
     low_confidence = _is_low_confidence(ranked)
 
     if log_query:
@@ -308,6 +335,101 @@ def retrieve_chunks(
     )
 
 
+def retrieve_chunks_with_language_fallback(
+    session: Session,
+    embedder: OpenAICompatibleEmbeddingClient,
+    query: str,
+    *,
+    preferred_language: str | None,
+    limit: int = DEFAULT_RESULT_LIMIT,
+    candidate_limit: int = DEFAULT_CANDIDATE_LIMIT,
+    log_query: bool = True,
+) -> RetrievalResult:
+    clean_query = " ".join(query.split())
+    if not clean_query:
+        return RetrievalResult(query=query, chunks=[], low_confidence=True)
+
+    preferred_filters = RetrievalFilters(language=preferred_language) if preferred_language else RetrievalFilters()
+    ranked = _rank_chunks(
+        session,
+        embedder=embedder,
+        query=clean_query,
+        filters=preferred_filters,
+        limit=limit,
+        candidate_limit=candidate_limit,
+    )
+    language_fallback_used = False
+
+    if preferred_language and _is_low_confidence(ranked):
+        fallback_ranked = _rank_chunks(
+            session,
+            embedder=embedder,
+            query=clean_query,
+            filters=RetrievalFilters(),
+            limit=limit,
+            candidate_limit=candidate_limit,
+        )
+        if not _is_low_confidence(fallback_ranked):
+            ranked = fallback_ranked
+            language_fallback_used = True
+
+    low_confidence = _is_low_confidence(ranked)
+    if log_query:
+        filters_for_log = preferred_filters.as_log_dict()
+        filters_for_log["language_fallback_used"] = language_fallback_used
+        session.add(
+            RetrievalLog(
+                query_hash=_hash_query(clean_query),
+                language=preferred_language,
+                filters=filters_for_log,
+                retrieved_chunk_ids=[row.chunk.id for row in ranked],
+                ranking=[
+                    {
+                        "chunk_id": str(row.chunk.id),
+                        "score": row.score,
+                        "vector_score": row.vector_score,
+                        "keyword_score": row.keyword_score,
+                    }
+                    for row in ranked
+                ],
+                low_confidence=low_confidence,
+            )
+        )
+        session.commit()
+
+    if low_confidence:
+        return RetrievalResult(
+            query=clean_query,
+            chunks=[],
+            low_confidence=True,
+            language_fallback_used=language_fallback_used,
+        )
+
+    return RetrievalResult(
+        query=clean_query,
+        chunks=[row.to_retrieved_chunk() for row in ranked],
+        low_confidence=False,
+        language_fallback_used=language_fallback_used,
+    )
+
+
+def expand_retrieval_terms(query: str) -> str:
+    folded = query.casefold()
+    additions: list[str] = []
+    seen = {query.casefold()}
+    for term, translations in RETRIEVAL_GLOSSARY.items():
+        if term not in folded:
+            continue
+        for translation in translations:
+            key = translation.casefold()
+            if key not in seen:
+                additions.append(translation)
+                seen.add(key)
+    if not additions:
+        return query
+    return " ".join([query, *additions])
+
+
 @dataclass
 class _Candidate:
     chunk: DocumentChunk
@@ -337,6 +459,31 @@ class _Candidate:
             vector_score=round(self.vector_score, 6),
             keyword_score=round(self.keyword_score, 6),
         )
+
+
+def _rank_chunks(
+    session: Session,
+    *,
+    embedder: OpenAICompatibleEmbeddingClient,
+    query: str,
+    filters: RetrievalFilters,
+    limit: int,
+    candidate_limit: int,
+) -> list[_Candidate]:
+    query_vector = embedder.embed_query(query)
+    vector_rows = _vector_candidates(
+        session,
+        query_vector=query_vector,
+        filters=filters,
+        limit=candidate_limit,
+    )
+    keyword_rows = _keyword_candidates(
+        session,
+        query=query,
+        filters=filters,
+        limit=candidate_limit,
+    )
+    return _merge_rankings(vector_rows, keyword_rows, limit=limit)
 
 
 def _chunks_needing_embeddings(

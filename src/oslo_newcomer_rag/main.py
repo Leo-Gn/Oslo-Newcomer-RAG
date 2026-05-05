@@ -10,6 +10,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from oslo_newcomer_rag.config import Settings, get_settings
+from oslo_newcomer_rag.chat_flow import build_direct_answer, retrieve_for_chat
 from oslo_newcomer_rag.db.models import AnonymousFeedback, Document, DocumentChunk, Source
 from oslo_newcomer_rag.db.session import check_database, create_engine_from_settings
 from oslo_newcomer_rag.generation import (
@@ -24,8 +25,6 @@ from oslo_newcomer_rag.generation import (
 from oslo_newcomer_rag.retrieval import (
     EmbeddingConfigError,
     OpenAICompatibleEmbeddingClient,
-    RetrievalFilters,
-    retrieve_chunks,
 )
 from oslo_newcomer_rag.sources import load_source_registry
 
@@ -189,6 +188,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @api.post("/api/chat", response_model=ChatResponse, tags=["chat"])
     async def chat(request: ChatRequest) -> ChatResponse:
+        direct_answer = build_direct_answer(request.question, request.ui_language)
+        if direct_answer:
+            return _chat_response(direct_answer)
+
         if not app_settings.has_database_config:
             raise HTTPException(status_code=503, detail="DATABASE_URL is not configured")
 
@@ -198,22 +201,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             embedder = OpenAICompatibleEmbeddingClient(app_settings)
             chat_client = OpenAICompatibleChatClient(app_settings)
+            session_history = [
+                GenerationChatMessage(role=message.role, content=message.content)
+                for message in request.session_history
+            ]
             with Session(engine) as session:
-                retrieval = retrieve_chunks(
+                retrieval = retrieve_for_chat(
                     session,
                     embedder,
-                    request.question,
-                    filters=RetrievalFilters(language=request.ui_language),
+                    question=request.question,
+                    ui_language=request.ui_language,
+                    session_history=session_history,
                 )
                 answer = build_grounded_answer(
                     question=request.question,
                     ui_language=request.ui_language,
                     retrieval=retrieval,
                     chat_client=chat_client,
-                    session_history=[
-                        GenerationChatMessage(role=message.role, content=message.content)
-                        for message in request.session_history
-                    ],
+                    session_history=session_history,
                 )
         except (ChatConfigError, EmbeddingConfigError, ValueError) as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc

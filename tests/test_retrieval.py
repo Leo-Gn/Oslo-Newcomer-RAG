@@ -12,9 +12,11 @@ from oslo_newcomer_rag.retrieval import (
     OpenAICompatibleEmbeddingClient,
     RetrievalFilters,
     _Candidate,
+    expand_retrieval_terms,
     _is_low_confidence,
     _merge_rankings,
     normalize_vector,
+    retrieve_chunks_with_language_fallback,
 )
 
 
@@ -146,6 +148,45 @@ def test_hybrid_ranking_handles_norwegian_wording() -> None:
     assert result.source_owner == "Skatteetaten"
     assert result.language == "no"
     assert result.section_heading == "Skattekort"
+
+
+def test_retrieval_glossary_adds_english_terms_for_norwegian_queries() -> None:
+    expanded = expand_retrieval_terms("Hvordan får jeg skattekort og D-nummer?")
+
+    assert "tax deduction card" in expanded
+    assert "D number" in expanded
+    assert "identification number" in expanded
+
+
+def test_language_fallback_returns_english_chunks_when_norwegian_filter_is_weak(monkeypatch) -> None:
+    tax_chunk = _chunk(
+        "en",
+        "Tax deduction card",
+        "You need a tax deduction card when you work in Norway.",
+    )
+    tax_source = _source("Skatteetaten", "https://www.skatteetaten.no/en/person/", "tax")
+    calls: list[str | None] = []
+
+    def fake_rank(session, *, embedder, query, filters, limit, candidate_limit):
+        calls.append(filters.language)
+        if filters.language == "no":
+            return []
+        return [_Candidate(chunk=tax_chunk, source=tax_source, vector_score=0.78, keyword_score=1.0)]
+
+    monkeypatch.setattr("oslo_newcomer_rag.retrieval._rank_chunks", fake_rank)
+
+    result = retrieve_chunks_with_language_fallback(
+        session=object(),
+        embedder=object(),
+        query="Hvordan får jeg skattekort?",
+        preferred_language="no",
+        log_query=False,
+    )
+
+    assert calls == ["no", None]
+    assert result.low_confidence is False
+    assert result.language_fallback_used is True
+    assert result.chunks[0].source_owner == "Skatteetaten"
 
 
 def test_low_confidence_result_is_refused_for_unrelated_query() -> None:
