@@ -273,11 +273,22 @@ test("language toggle sends Norwegian requests", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "NO" }).click();
   await expect(page.getByPlaceholder("Spør om UDI, NAV, skatt, arbeid, bolig, SUA eller SiO")).toBeVisible();
+  await expect(page.getByText("Hjelper deg med norsk byråkrati via offentlige kilder.")).toBeVisible();
 
   await page.getByRole("button", { name: "Hvordan får jeg skattekort?" }).click();
 
   await expect.poll(() => postedLanguage).toBe("no");
   await expect(page.getByText("Du kan starte med offentlige kilder. [S1]")).toBeVisible();
+});
+
+test("theme toggle starts light and switches to dark", async ({ page }) => {
+  await page.goto("/");
+
+  await expect(page.locator(".app-shell")).toHaveClass(/theme-light/);
+  await page.getByRole("button", { name: "Switch to dark mode" }).click();
+  await expect(page.locator(".app-shell")).toHaveClass(/theme-dark/);
+  await page.getByRole("button", { name: "Switch to light mode" }).click();
+  await expect(page.locator(".app-shell")).toHaveClass(/theme-light/);
 });
 
 test("refusal and disclaimer states are clear", async ({ page }) => {

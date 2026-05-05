@@ -54,6 +54,17 @@ button {
   isolation: isolate;
   background: #050607;
   color: #f4f4f6;
+  transition:
+    background 220ms ease,
+    color 220ms ease;
+}
+
+.theme-light {
+  color-scheme: light;
+}
+
+.theme-dark {
+  color-scheme: dark;
 }
 
 .app-shell::before,
@@ -124,7 +135,7 @@ button {
   color: rgba(255, 255, 255, 0.95);
   font-size: clamp(1.05rem, 1.35vw, 1.35rem);
   font-weight: 690;
-  letter-spacing: 0;
+  letter-spacing: -0.015em;
   line-height: 1.14;
   transition: color 160ms ease;
 }
@@ -145,7 +156,8 @@ button {
 }
 
 .clear-button,
-.language-switch {
+.language-switch,
+.theme-switch {
   display: inline-flex;
   min-height: 36px;
   align-items: center;
@@ -158,6 +170,34 @@ button {
     inset 0 1px 0 rgba(255, 255, 255, 0.1),
     0 10px 28px rgba(0, 0, 0, 0.22);
   backdrop-filter: blur(18px) saturate(120%);
+}
+
+.theme-switch {
+  gap: 3px;
+  border: 0;
+  padding: 3px;
+}
+
+.theme-icon {
+  display: inline-grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 999px;
+  color: rgba(235, 235, 245, 0.58);
+  transition:
+    background 160ms ease,
+    color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.theme-icon-active {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(222, 230, 242, 0.94));
+  color: #151719;
+  box-shadow:
+    0 5px 15px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.86);
 }
 
 .clear-button {
@@ -687,7 +727,16 @@ button {
 .answer-block {
   max-width: min(78ch, 76%);
   color: rgba(245, 245, 247, 0.9);
-  padding: 2px 0;
+  border-radius: 28px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.072), rgba(255, 255, 255, 0.018)),
+    rgba(42, 43, 47, 0.28);
+  box-shadow:
+    0 18px 46px rgba(0, 0, 0, 0.18),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.055),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  padding: 17px 18px 18px;
+  backdrop-filter: blur(18px) saturate(120%);
   user-select: text;
 }
 
@@ -835,6 +884,241 @@ button {
   gap: 6px;
   color: rgba(235, 235, 245, 0.42);
   font-size: 0.76rem;
+}
+
+.theme-light {
+  background: rgba(246, 247, 249, 0.18);
+  color: rgba(28, 30, 34, 0.92);
+}
+
+.theme-light::before {
+  filter: blur(7px) saturate(108%) brightness(1.18);
+  opacity: 0.92;
+}
+
+.theme-light::after {
+  background:
+    radial-gradient(circle at 50% 18%, rgba(255, 255, 255, 0.13), transparent 30rem),
+    linear-gradient(180deg, rgba(245, 247, 252, 0.12), rgba(235, 240, 248, 0.2) 48%, rgba(210, 218, 230, 0.24));
+}
+
+.theme-light .chat-surface {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.26), rgba(255, 255, 255, 0.13) 38%, rgba(255, 255, 255, 0.06)),
+    rgba(255, 255, 255, 0.12);
+  box-shadow:
+    0 34px 100px rgba(14, 20, 31, 0.28),
+    0 2px 0 rgba(255, 255, 255, 0.42),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.62),
+    inset 0 -1px 0 rgba(18, 24, 34, 0.08);
+  backdrop-filter: blur(22px) saturate(138%);
+}
+
+.theme-light .chat-surface::before {
+  background: transparent;
+}
+
+.theme-light .topbar,
+.theme-light .message-stage,
+.theme-light .start-screen {
+  background: transparent;
+}
+
+.theme-light .topbar {
+  box-shadow: inset 0 -1px 0 rgba(22, 30, 42, 0.1);
+}
+
+.theme-light .brand-block:hover h1,
+.theme-light .brand-block h1 {
+  color: rgba(18, 22, 28, 0.94);
+}
+
+.theme-light .brand-block p:last-child {
+  color: rgba(31, 37, 47, 0.78);
+}
+
+.theme-light .composer-icon-button {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0.34)),
+    rgba(255, 255, 255, 0.34);
+  box-shadow:
+    inset 0 0 0 1px rgba(34, 42, 56, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.7),
+    0 10px 26px rgba(18, 24, 34, 0.12);
+}
+
+.theme-light .language-switch {
+  background:
+    linear-gradient(180deg, rgba(17, 24, 39, 0.105), rgba(17, 24, 39, 0.045)),
+    rgba(17, 24, 39, 0.055);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.42),
+    0 10px 26px rgba(18, 24, 34, 0.11);
+}
+
+.theme-light .theme-switch {
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.12), rgba(0, 0, 0, 0.06)),
+    rgba(12, 18, 28, 0.1);
+  box-shadow:
+    inset 0 0 0 1px rgba(18, 24, 34, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.34),
+    0 10px 26px rgba(18, 24, 34, 0.12);
+}
+
+.theme-light .language-switch > svg {
+  color: rgba(0, 113, 227, 0.86);
+}
+
+.theme-light .language-button,
+.theme-light .theme-icon {
+  color: rgba(54, 60, 72, 0.62);
+}
+
+.theme-light .language-button:hover,
+.theme-light .theme-icon:hover {
+  color: rgba(20, 24, 30, 0.9);
+}
+
+.theme-light .language-button-active,
+.theme-light .theme-icon-active {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(235, 238, 244, 0.9));
+  color: rgba(20, 24, 30, 0.94);
+  box-shadow:
+    0 8px 20px rgba(18, 24, 34, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.theme-light .prompt-title,
+.theme-light .citation-heading,
+.theme-light .data-footer {
+  color: rgba(42, 48, 58, 0.56);
+}
+
+.theme-light .empty-state {
+  color: rgba(31, 35, 43, 0.82);
+}
+
+.theme-light .answer-block {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.58), rgba(255, 255, 255, 0.34)),
+    rgba(255, 255, 255, 0.26);
+  color: rgba(17, 21, 29, 0.94);
+  box-shadow:
+    0 20px 50px rgba(18, 24, 34, 0.15),
+    0 6px 20px rgba(18, 24, 34, 0.09),
+    inset 0 0 0 1px rgba(38, 48, 64, 0.07),
+    inset 0 1px 0 rgba(255, 255, 255, 0.68);
+  backdrop-filter: blur(18px) saturate(132%);
+}
+
+.theme-light .empty-state svg {
+  color: rgba(0, 113, 227, 0.78);
+}
+
+.theme-light .example-button,
+.theme-light .citation-pill,
+.theme-light .thinking-row {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.68), rgba(255, 255, 255, 0.28)),
+    rgba(255, 255, 255, 0.3);
+  color: rgba(31, 35, 43, 0.78);
+  box-shadow:
+    inset 0 0 0 1px rgba(36, 45, 60, 0.07),
+    inset 0 1px 0 rgba(255, 255, 255, 0.72),
+    0 12px 28px rgba(18, 24, 34, 0.12);
+}
+
+.theme-light .example-button:hover,
+.theme-light .citation-pill:hover {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.84), rgba(255, 255, 255, 0.38)),
+    rgba(255, 255, 255, 0.4);
+  color: rgba(15, 18, 24, 0.92);
+}
+
+.theme-light .composer {
+  background:
+    radial-gradient(circle at 20% 0, rgba(255, 255, 255, 0.72), transparent 17rem),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.34)),
+    rgba(255, 255, 255, 0.38);
+  box-shadow:
+    0 18px 50px rgba(18, 24, 34, 0.18),
+    0 8px 22px rgba(18, 24, 34, 0.1),
+    inset 0 0 0 1px rgba(38, 48, 64, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+.theme-light .composer:focus-within {
+  background:
+    radial-gradient(circle at 20% 0, rgba(255, 255, 255, 0.82), transparent 18rem),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0.42)),
+    rgba(255, 255, 255, 0.45);
+  box-shadow:
+    0 22px 62px rgba(18, 24, 34, 0.2),
+    0 0 0 1px rgba(0, 113, 227, 0.22),
+    0 0 34px rgba(0, 113, 227, 0.08),
+    inset 0 0 0 1px rgba(38, 48, 64, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.theme-light .composer-input {
+  color: rgba(22, 26, 32, 0.94);
+}
+
+.theme-light .composer-input::placeholder {
+  color: rgba(42, 48, 58, 0.68);
+}
+
+.theme-light .send-button:disabled {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.48), rgba(255, 255, 255, 0.24)),
+    rgba(255, 255, 255, 0.24);
+  color: rgba(54, 60, 72, 0.52);
+  box-shadow: inset 0 0 0 1px rgba(38, 48, 64, 0.06);
+}
+
+.theme-light .speaker-label {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.theme-light .answer-block .copy-button {
+  background: rgba(255, 255, 255, 0.62);
+  color: rgba(31, 36, 45, 0.76);
+  box-shadow: inset 0 0 0 1px rgba(38, 48, 64, 0.06);
+}
+
+.theme-light .state-badge-answer {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.58), rgba(255, 255, 255, 0.2)),
+    rgba(34, 197, 94, 0.16);
+  color: rgba(16, 97, 48, 0.92);
+}
+
+.theme-light .state-badge-refusal,
+.theme-light .answer-refusal,
+.theme-light .disclaimer {
+  color: rgba(119, 72, 18, 0.94);
+}
+
+.theme-light .state-badge-refusal,
+.theme-light .disclaimer {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.52), rgba(255, 255, 255, 0.18)),
+    rgba(245, 158, 11, 0.15);
+}
+
+.theme-light .error-card {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.58), rgba(255, 255, 255, 0.22)),
+    rgba(255, 69, 58, 0.12);
+  color: rgba(125, 34, 30, 0.94);
+}
+
+.theme-light .citation-pill span:first-child {
+  color: rgba(0, 113, 227, 0.9);
 }
 
 @media (max-width: 760px) {

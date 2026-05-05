@@ -7,8 +7,10 @@ import {
   Copy,
   ExternalLink,
   Globe2,
+  Moon,
   RotateCcw,
-  ShieldAlert
+  ShieldAlert,
+  Sun
 } from "lucide-react";
 import { FormEvent, KeyboardEvent, MouseEvent, useEffect, useMemo, useRef, useState } from "react";
 
@@ -20,6 +22,8 @@ const text = {
     appName: "Oslo Newcomer RAG",
     subtitle: "Navigating Norwegian bureaucracy with official sources.",
     language: "Language",
+    themeLight: "Switch to light mode",
+    themeDark: "Switch to dark mode",
     examples: [
       "What should I do after moving to Oslo?",
       "How do I get a tax deduction card?",
@@ -49,8 +53,10 @@ const text = {
   },
   no: {
     appName: "Oslo Newcomer RAG",
-    subtitle: "Navigating Norwegian bureaucracy with official sources.",
+    subtitle: "Hjelper deg med norsk byråkrati via offentlige kilder.",
     language: "Språk",
+    themeLight: "Bytt til lys modus",
+    themeDark: "Bytt til mørk modus",
     examples: [
       "Hva bør jeg gjøre etter at jeg flytter til Oslo?",
       "Hvordan får jeg skattekort?",
@@ -82,6 +88,7 @@ const text = {
 
 function App() {
   const [language, setLanguage] = useState<UiLanguage>("en");
+  const [theme, setTheme] = useState<"light" | "dark">("light");
   const [question, setQuestion] = useState("");
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [snapshot, setSnapshot] = useState<SourceSnapshot | null>(null);
@@ -217,7 +224,7 @@ function App() {
   }
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell theme-${theme}`}>
       <main className="workspace">
         <section
           className={conversationStarted ? "chat-surface chat-surface-active" : "chat-surface chat-surface-start"}
@@ -231,6 +238,11 @@ function App() {
             </button>
 
             <div className="topbar-actions">
+              <ThemeSwitch
+                label={theme === "dark" ? copy.themeLight : copy.themeDark}
+                onToggle={() => setTheme((current) => (current === "dark" ? "light" : "dark"))}
+                theme={theme}
+              />
               <LanguageSwitch language={language} onChange={setLanguage} label={copy.language} />
             </div>
           </header>
@@ -334,6 +346,33 @@ function App() {
         </span>
       </footer>
     </div>
+  );
+}
+
+function ThemeSwitch({
+  label,
+  onToggle,
+  theme
+}: {
+  label: string;
+  onToggle: () => void;
+  theme: "light" | "dark";
+}) {
+  return (
+    <button
+      aria-label={label}
+      aria-pressed={theme === "dark"}
+      className="theme-switch"
+      type="button"
+      onClick={onToggle}
+    >
+      <span className={theme === "light" ? "theme-icon theme-icon-active" : "theme-icon"}>
+        <Sun aria-hidden="true" className="h-4 w-4" />
+      </span>
+      <span className={theme === "dark" ? "theme-icon theme-icon-active" : "theme-icon"}>
+        <Moon aria-hidden="true" className="h-4 w-4" />
+      </span>
+    </button>
   );
 }
 
