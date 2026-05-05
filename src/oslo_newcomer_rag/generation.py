@@ -17,6 +17,7 @@ from oslo_newcomer_rag.retrieval import RetrievedChunk, RetrievalResult
 MAX_CONTEXT_CHARS = 11_000
 CITATION_PATTERN = re.compile(r"\[S(\d+)\]")
 GROUPED_CITATION_PATTERN = re.compile(r"\[(S\d+(?:\s*,\s*S\d+)+)\]")
+ID_NUMBER_PATTERN = re.compile(r"\b\d{6}\s?\d{5}\b")
 LEGAL_RISK_TERMS = (
     "appeal",
     "rejected",
@@ -54,6 +55,43 @@ GREETING_TERMS = {
     "god dag",
     "god kveld",
 }
+PERSONAL_RECORD_TERMS = (
+    "tax records",
+    "personal record",
+    "personal records",
+    "my record",
+    "my records",
+    "owe money",
+    "debt",
+    "case status",
+    "application status",
+    "check my application",
+    "my personal id",
+    "personal id number",
+    "fødselsnummeret mitt",
+    "personnummeret mitt",
+    "skatteregister",
+    "skattemelding",
+    "sjekke skatten",
+    "skylder penger",
+    "gjeld",
+    "status på saken",
+    "status på søknaden",
+)
+LEGAL_DRAFTING_TERMS = (
+    "write an appeal",
+    "appeal letter",
+    "write a letter",
+    "draft an appeal",
+    "fill the form",
+    "fill out the form",
+    "complete the form",
+    "send to them",
+    "klagebrev",
+    "skrive klage",
+    "fylle ut skjema",
+    "fylle skjema",
+)
 
 
 @dataclass(frozen=True)
@@ -92,6 +130,10 @@ class GroundedAnswer:
 
 def direct_chat_answer(question: str, ui_language: str) -> GroundedAnswer | None:
     language = _normalise_language(ui_language)
+    boundary_answer = _boundary_answer(question, language)
+    if boundary_answer:
+        return boundary_answer
+
     if not is_greeting(question):
         return None
 
@@ -123,6 +165,52 @@ def is_greeting(question: str) -> bool:
     if not cleaned:
         return False
     return cleaned in GREETING_TERMS
+
+
+def _boundary_answer(question: str, language: str) -> GroundedAnswer | None:
+    folded = question.casefold()
+    if ID_NUMBER_PATTERN.search(question) or any(term in folded for term in PERSONAL_RECORD_TERMS):
+        if language == "no":
+            answer = (
+                "Jeg kan ikke sjekke personlige registre, skatteopplysninger, gjeld eller søknadsstatus. "
+                "Bruk den relevante offentlige innloggingstjenesten eller kontakt etaten direkte."
+            )
+        else:
+            answer = (
+                "I cannot check personal records, tax records, debt, or application status. "
+                "Use the relevant public login service or contact the agency directly."
+            )
+        return GroundedAnswer(
+            answer_id=str(uuid.uuid4()),
+            answer=answer,
+            refused=True,
+            disclaimer=None,
+            citations=[],
+            data_currency=DataCurrency(collected_at=None, official_last_updated_at=None),
+        )
+
+    if any(term in folded for term in LEGAL_DRAFTING_TERMS):
+        disclaimer = legal_disclaimer(language)
+        if language == "no":
+            answer = (
+                "Jeg kan ikke skrive klagebrev, fylle ut skjemaer eller lage tekst som skal sendes inn i en "
+                "personlig sak. Jeg kan bare forklare generell informasjon fra offentlige kilder."
+            )
+        else:
+            answer = (
+                "I cannot write appeal letters, fill forms, or draft text to submit in a personal case. "
+                "I can only explain general information from official sources."
+            )
+        return GroundedAnswer(
+            answer_id=str(uuid.uuid4()),
+            answer=answer,
+            refused=True,
+            disclaimer=disclaimer,
+            citations=[],
+            data_currency=DataCurrency(collected_at=None, official_last_updated_at=None),
+        )
+
+    return None
 
 
 class ChatConfigError(RuntimeError):
@@ -205,7 +293,7 @@ def build_grounded_answer(
     parsed = _parse_model_answer(model_text)
 
     if bool(parsed.get("refusal")):
-        return _refusal_answer(language=language, disclaimer=disclaimer)
+        return _partial_support_answer(language=language, disclaimer=disclaimer, source_map=source_map)
 
     raw_answer = str(parsed.get("answer") or "").strip()
     if not raw_answer:
@@ -215,8 +303,7 @@ def build_grounded_answer(
     answer = _keep_known_citation_markers(answer, source_map)
     answer = _add_missing_citations(answer, default_id="S1")
     if disclaimer:
-        answer = _append_disclaimer(answer, disclaimer)
-
+        answer = _remove_disclaimer_text(answer, disclaimer)
     used_ids = _used_source_ids(answer)
     citations = [source_map[source_id] for source_id in used_ids if source_id in source_map]
     if not citations:
@@ -260,9 +347,6 @@ def _refusal_answer(*, language: str, disclaimer: str | None) -> GroundedAnswer:
             "I do not have enough support in the stored official sources to answer safely. "
             "Please check the relevant public website directly."
         )
-    if disclaimer:
-        answer = _append_disclaimer(answer, disclaimer)
-
     return GroundedAnswer(
         answer_id=str(uuid.uuid4()),
         answer=answer,
@@ -270,6 +354,37 @@ def _refusal_answer(*, language: str, disclaimer: str | None) -> GroundedAnswer:
         disclaimer=disclaimer,
         citations=[],
         data_currency=DataCurrency(collected_at=None, official_last_updated_at=None),
+    )
+
+
+def _partial_support_answer(
+    *,
+    language: str,
+    disclaimer: str | None,
+    source_map: dict[str, Citation],
+) -> GroundedAnswer:
+    primary = source_map["S1"]
+    if language == "no":
+        answer = (
+            "De lagrede utdragene oppgir ikke den nøyaktige detaljen i spørsmålet. "
+            f"Den mest relevante offentlige kilden å sjekke er {primary.source_owner}, "
+            f"seksjonen \"{primary.section_heading}\". [S1]"
+        )
+    else:
+        answer = (
+            "The stored excerpts do not give the exact detail in the question. "
+            f"The most relevant official source to check is {primary.source_owner}, "
+            f"section \"{primary.section_heading}\". [S1]"
+        )
+
+    citations = [primary]
+    return GroundedAnswer(
+        answer_id=str(uuid.uuid4()),
+        answer=answer,
+        refused=False,
+        disclaimer=disclaimer,
+        citations=citations,
+        data_currency=_data_currency(citations),
     )
 
 
@@ -285,7 +400,7 @@ def _build_prompt(
     context = _format_context(chunks)
     history = _format_history(session_history)
     disclaimer_rule = (
-        f'Include this disclaimer at the end if it fits naturally: "{disclaimer}".'
+        f'Do not include this disclaimer in the answer text; it is shown separately by the app: "{disclaimer}".'
         if disclaimer
         else "Do not add a legal disclaimer unless the question asks for personal legal advice."
     )
@@ -295,6 +410,9 @@ def _build_prompt(
         "Use only the supplied official source excerpts for factual public-service information. "
         "Keep the language simple, around B1/B2. "
         "Do not decide eligibility, fill forms, or invent missing rules. "
+        "Do not say 'sources you provided'; refer to them as stored official sources or excerpts. "
+        "For legal-risk questions, answer only the supported general information and tell the user to check "
+        "the relevant agency or qualified adviser for their own case. "
         "For follow-up questions, use the session history only to understand what the user refers to; "
         "the factual answer must still come from the source excerpts. "
         "If the answer language differs from the source language, translate only supported details. "
@@ -456,10 +574,8 @@ def _add_missing_citations(answer: str, *, default_id: str) -> str:
     return "\n".join(lines).strip()
 
 
-def _append_disclaimer(answer: str, disclaimer: str) -> str:
-    if disclaimer in answer:
-        return answer
-    return f"{answer.rstrip()}\n\n{disclaimer}"
+def _remove_disclaimer_text(answer: str, disclaimer: str) -> str:
+    return answer.replace(disclaimer, "").strip()
 
 
 def _used_source_ids(answer: str) -> list[str]:

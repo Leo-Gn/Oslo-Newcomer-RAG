@@ -40,10 +40,13 @@ RETRIEVAL_GLOSSARY = {
     "fastlege": ("general practitioner", "GP", "healthcare"),
     "d-nummer": ("D number", "identification number"),
     "d nummer": ("D number", "identification number"),
+    "d-number": ("D number", "identification number"),
+    "d number": ("D number", "identification number"),
     "fødselsnummer": ("national identity number", "identification number"),
     "personnummer": ("national identity number",),
     "eøs": ("EU EEA", "right of residence"),
     "eu/eøs": ("EU EEA", "right of residence"),
+    "eea": ("EU EEA", "right of residence"),
     "arbeidstillatelse": ("work permit", "work immigration"),
     "permanent opphold": ("permanent residence",),
     "norskkurs": ("Norwegian language course", "learn Norwegian"),
@@ -60,7 +63,25 @@ RETRIEVAL_GLOSSARY = {
     "faglærte": ("skilled workers",),
     "familier": ("children families",),
     "bestille time": ("book appointment", "appointment booking"),
+    "appointment": ("book appointment", "SUA", "service centre foreign workers"),
+    "book an appointment": ("book appointment", "SUA", "service centre foreign workers"),
+    "sua": ("Service Centre for Foreign Workers", "book appointment"),
     "utenlandsk arbeidstaker": ("foreign worker", "service centre foreign workers"),
+    "study permit": ("studies", "student residence permit", "UDI"),
+    "studietillatelse": ("study permit", "student residence permit", "UDI"),
+    "studenttillatelse": ("study permit", "student residence permit", "UDI"),
+    "proof of funds": ("money", "funds", "student residence permit"),
+    "penger": ("money", "funds", "proof of funds"),
+    "deltid": ("part-time work", "work while studying"),
+    "part-time": ("part-time work", "work while studying"),
+    "waiting list": ("housing application", "student housing", "SiO"),
+    "venteliste": ("waiting list", "housing application", "student housing"),
+    "dagpenger": ("unemployment benefits", "jobseeker", "NAV"),
+    "unemployment benefits": ("dagpenger", "jobseeker", "NAV"),
+    "pet": ("rental", "housing", "accommodation"),
+    "pets": ("rental", "housing", "accommodation"),
+    "hund": ("pet", "rental", "housing"),
+    "katt": ("pet", "rental", "housing"),
 }
 
 
@@ -302,6 +323,7 @@ def retrieve_chunks(
         limit=limit,
         candidate_limit=candidate_limit,
     )
+    ranked = _with_neighboring_candidates(session, ranked, filters=active_filters, limit=limit)
     low_confidence = _is_low_confidence(ranked)
 
     if log_query:
@@ -358,6 +380,7 @@ def retrieve_chunks_with_language_fallback(
         limit=limit,
         candidate_limit=candidate_limit,
     )
+    ranked = _with_neighboring_candidates(session, ranked, filters=preferred_filters, limit=limit)
     language_fallback_used = False
 
     if preferred_language and _is_low_confidence(ranked):
@@ -368,6 +391,12 @@ def retrieve_chunks_with_language_fallback(
             filters=RetrievalFilters(),
             limit=limit,
             candidate_limit=candidate_limit,
+        )
+        fallback_ranked = _with_neighboring_candidates(
+            session,
+            fallback_ranked,
+            filters=RetrievalFilters(),
+            limit=limit,
         )
         if not _is_low_confidence(fallback_ranked):
             ranked = fallback_ranked
@@ -484,6 +513,60 @@ def _rank_chunks(
         limit=candidate_limit,
     )
     return _merge_rankings(vector_rows, keyword_rows, limit=limit)
+
+
+def _with_neighboring_candidates(
+    session: Session,
+    rows: Sequence[_Candidate],
+    *,
+    filters: RetrievalFilters,
+    limit: int,
+) -> list[_Candidate]:
+    if not rows or not hasattr(session, "execute"):
+        return list(rows)
+
+    merged: dict[str, _Candidate] = {str(row.chunk.id): row for row in rows}
+    expanded: list[_Candidate] = []
+    expanded_ids: set[str] = set()
+    for row in rows[:2]:
+        expanded.append(row)
+        expanded_ids.add(str(row.chunk.id))
+        for neighbor in _neighbor_candidates(session, row, filters=filters):
+            key = str(neighbor.chunk.id)
+            if key not in merged:
+                merged[key] = neighbor
+                expanded.append(neighbor)
+                expanded_ids.add(key)
+
+    for row in rows[2:]:
+        if str(row.chunk.id) not in expanded_ids:
+            expanded.append(row)
+            expanded_ids.add(str(row.chunk.id))
+
+    return sorted(expanded, key=lambda row: row.score, reverse=True)[:limit]
+
+
+def _neighbor_candidates(session: Session, row: _Candidate, *, filters: RetrievalFilters) -> list[_Candidate]:
+    statement = (
+        select(DocumentChunk, Source)
+        .join(Source, Source.id == DocumentChunk.source_id)
+        .where(
+            DocumentChunk.document_id == row.chunk.document_id,
+            DocumentChunk.chunk_index.in_([row.chunk.chunk_index - 1, row.chunk.chunk_index + 1]),
+        )
+        .order_by(DocumentChunk.chunk_index)
+    )
+    statement = _apply_filters(statement, filters)
+
+    return [
+        _Candidate(
+            chunk=chunk,
+            source=source,
+            vector_score=max(0.01, row.vector_score * 0.78),
+            keyword_score=0.0,
+        )
+        for chunk, source in session.execute(statement).all()
+    ]
 
 
 def _chunks_needing_embeddings(

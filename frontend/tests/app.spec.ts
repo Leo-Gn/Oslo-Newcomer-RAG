@@ -88,7 +88,7 @@ test("example prompts send a question and show citations", async ({ page }) => {
 
   await expect(page.getByText("Updated data: 31 Jan 2026")).toBeVisible();
   await expect(page.getByRole("button", { name: "Clear chat" })).toHaveCount(0);
-  await expect(page.locator(".example-button")).toHaveCount(5);
+  await expect(page.locator(".example-button")).toHaveCount(3);
   await page.locator(".example-button").first().click();
 
   await expect(page.getByText("Start with registration, tax, and the relevant Oslo services. [S1]")).toBeVisible();
@@ -116,8 +116,8 @@ test("example prompts are reshuffled on reload", async ({ page }) => {
   await page.reload();
   const secondSet = await page.locator(".example-button").allInnerTexts();
 
-  expect(firstSet).toHaveLength(5);
-  expect(secondSet).toHaveLength(5);
+  expect(firstSet).toHaveLength(3);
+  expect(secondSet).toHaveLength(3);
   expect(secondSet).not.toEqual(firstSet);
 });
 
@@ -164,7 +164,7 @@ test("clearing a pending answer prevents stale messages from returning", async (
   await expect(page.getByText("Checking official sources")).toBeVisible();
 
   await page.getByRole("button", { name: "Clear chat" }).click();
-  await expect(page.locator(".example-button")).toHaveCount(5);
+  await expect(page.locator(".example-button")).toHaveCount(3);
   await expect(page.getByText("Checking official sources")).toHaveCount(0);
   await page.waitForTimeout(520);
   await expect(page.getByText("This stale answer should not appear. [S1]")).toHaveCount(0);
@@ -254,6 +254,28 @@ test("enter sends, shift enter keeps a new line", async ({ page }) => {
   await expect(page.getByText("Start with registration, tax, and the relevant Oslo services. [S1]")).toBeVisible();
 });
 
+test("composer grows for longer drafts before scrolling", async ({ page }) => {
+  await page.goto("/");
+
+  const composer = page.getByPlaceholder("Type your question here...");
+  const initialHeight = await composer.evaluate((element) => element.getBoundingClientRect().height);
+  await composer.fill(
+    [
+      "I received a letter from UDI about my case.",
+      "I want to ask a careful question about which public office I should check.",
+      "Can you explain what information is usually available in the official sources?",
+      "Please keep it short and cite the relevant page."
+    ].join("\n")
+  );
+  const expanded = await composer.evaluate((element) => ({
+    height: element.getBoundingClientRect().height,
+    overflowY: getComputedStyle(element).overflowY
+  }));
+
+  expect(expanded.height).toBeGreaterThan(initialHeight);
+  expect(expanded.overflowY).toBe("hidden");
+});
+
 test("composer stays editable while an answer is pending", async ({ page }) => {
   await page.route("**/api/chat", async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 350));
@@ -338,7 +360,7 @@ test("language toggle sends Norwegian requests", async ({ page }) => {
   await expect(page.getByPlaceholder("Skriv spørsmålet ditt her...")).toBeVisible();
   await expect(page.getByText("Hjelper deg med norsk byråkrati via offentlige kilder.")).toBeVisible();
 
-  await expect(page.locator(".example-button")).toHaveCount(5);
+  await expect(page.locator(".example-button")).toHaveCount(3);
   await page.locator(".example-button").first().click();
 
   await expect.poll(() => postedLanguage).toBe("no");
@@ -438,12 +460,12 @@ test("clear chat and the title reset the conversation", async ({ page }) => {
 
   await page.getByRole("button", { name: "Clear chat" }).click();
   await expect(page.getByText("Start with registration, tax, and the relevant Oslo services. [S1]")).toHaveCount(0);
-  await expect(page.locator(".example-button")).toHaveCount(5);
+  await expect(page.locator(".example-button")).toHaveCount(3);
 
   await page.locator(".example-button").first().click();
   await page.getByRole("heading", { name: "Oslo Newcomer RAG" }).click();
   await expect(page.getByText("Start with registration, tax, and the relevant Oslo services. [S1]")).toHaveCount(0);
-  await expect(page.locator(".example-button")).toHaveCount(5);
+  await expect(page.locator(".example-button")).toHaveCount(3);
 });
 
 test("conversation history scrolls without hiding header actions", async ({ page }) => {
@@ -465,7 +487,7 @@ test("conversation history scrolls without hiding header actions", async ({ page
 
   expect(scrollInfo.height).toBeGreaterThan(scrollInfo.client);
   await page.getByRole("button", { name: "Clear chat" }).click();
-  await expect(page.locator(".example-button")).toHaveCount(5);
+  await expect(page.locator(".example-button")).toHaveCount(3);
 });
 
 test("mobile layout keeps the chat controls reachable", async ({ page }) => {
@@ -473,7 +495,7 @@ test("mobile layout keeps the chat controls reachable", async ({ page }) => {
   await page.goto("/");
 
   await expect(page.getByRole("heading", { name: "Oslo Newcomer RAG" })).toBeVisible();
-  await expect(page.locator(".example-button")).toHaveCount(5);
+  await expect(page.locator(".example-button")).toHaveCount(3);
   await expect(page.getByPlaceholder("Type your question here...")).toBeVisible();
   await expect(page.getByRole("button", { name: "Send" })).toBeVisible();
 });

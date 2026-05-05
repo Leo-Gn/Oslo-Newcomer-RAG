@@ -72,6 +72,31 @@ def test_norwegian_greeting_uses_requested_language() -> None:
     assert "skattekort" in answer.answer
 
 
+def test_personal_record_request_is_refused_directly() -> None:
+    answer = direct_chat_answer(
+        "My personal ID number is 120590 12345. Can you check my tax records?",
+        "en",
+    )
+
+    assert answer is not None
+    assert answer.refused is True
+    assert answer.citations == []
+    assert "cannot check personal records" in answer.answer
+
+
+def test_appeal_letter_request_is_refused_with_disclaimer() -> None:
+    answer = direct_chat_answer(
+        "Can you write an appeal letter for my rejected work permit?",
+        "en",
+    )
+
+    assert answer is not None
+    assert answer.refused is True
+    assert answer.disclaimer is not None
+    assert "not legal advice" in answer.disclaimer
+    assert answer.disclaimer not in answer.answer
+
+
 def test_chat_client_uses_openai_compatible_chat_completion_endpoint() -> None:
     seen_payloads: list[dict] = []
 
@@ -125,6 +150,26 @@ def test_unsupported_question_is_refused_without_calling_model() -> None:
     assert chat_client.calls == 0
 
 
+def test_model_refusal_with_retrieved_context_returns_source_direction() -> None:
+    chat_client = StubChatClient(
+        {
+            "answer": "I cannot answer from the excerpts.",
+            "refusal": True,
+        }
+    )
+
+    answer = build_grounded_answer(
+        question="How long is the student housing waiting list?",
+        ui_language="en",
+        retrieval=_retrieval([_chunk(section_heading="Student housing in Oslo")]),
+        chat_client=chat_client,
+    )
+
+    assert answer.refused is False
+    assert "do not give the exact detail" in answer.answer
+    assert answer.citations[0].section_heading == "Student housing in Oslo"
+
+
 def test_personal_legal_risk_question_gets_disclaimer() -> None:
     chat_client = StubChatClient(
         {
@@ -143,7 +188,7 @@ def test_personal_legal_risk_question_gets_disclaimer() -> None:
     assert needs_legal_disclaimer("My application was rejected. Should I appeal?") is True
     assert answer.disclaimer is not None
     assert "not legal advice" in answer.disclaimer
-    assert answer.answer.endswith(answer.disclaimer)
+    assert answer.disclaimer not in answer.answer
 
 
 def test_uncited_generated_answer_gets_source_marker() -> None:
@@ -211,7 +256,9 @@ def test_norwegian_refusal_uses_requested_language() -> None:
 
     assert answer.refused is True
     assert "Jeg finner ikke nok støtte" in answer.answer
-    assert "juridisk rådgivning" in answer.answer
+    assert answer.disclaimer is not None
+    assert "juridisk rådgivning" in answer.disclaimer
+    assert answer.disclaimer not in answer.answer
 
 
 def _retrieval(chunks: list[RetrievedChunk]) -> RetrievalResult:

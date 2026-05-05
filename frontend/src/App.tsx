@@ -118,7 +118,8 @@ const text = {
   }
 } as const;
 
-const VISIBLE_EXAMPLE_COUNT = 5;
+const VISIBLE_EXAMPLE_COUNT = 3;
+const MAX_COMPOSER_HEIGHT = 168;
 
 type FeedbackStatus = {
   rating: FeedbackRating | null;
@@ -473,16 +474,29 @@ function Composer({
   question: string;
   refCallback: (element: HTMLTextAreaElement | null) => void;
 }) {
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  useEffect(() => {
+    resizeComposer(textareaRef.current);
+  }, [question]);
+
   return (
     <form className="composer" onSubmit={onSubmit}>
       <textarea
         aria-label={copy.placeholder}
         className="composer-input"
         maxLength={2000}
-        onChange={(event) => onChange(event.target.value)}
+        onChange={(event) => {
+          onChange(event.target.value);
+          resizeComposer(event.target);
+        }}
         onKeyDown={onKeyDown}
         placeholder={copy.placeholder}
-        ref={refCallback}
+        ref={(element) => {
+          textareaRef.current = element;
+          refCallback(element);
+          resizeComposer(element);
+        }}
         rows={1}
         value={question}
       />
@@ -736,6 +750,17 @@ function selectExamplePrompts(examples: readonly string[]) {
     [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
   }
   return shuffled.slice(0, VISIBLE_EXAMPLE_COUNT);
+}
+
+function resizeComposer(element: HTMLTextAreaElement | null) {
+  if (!element) {
+    return;
+  }
+
+  element.style.height = "0px";
+  const nextHeight = Math.min(element.scrollHeight, MAX_COMPOSER_HEIGHT);
+  element.style.height = `${nextHeight}px`;
+  element.style.overflowY = element.scrollHeight > MAX_COMPOSER_HEIGHT ? "auto" : "hidden";
 }
 
 function buildHistory(turns: ChatTurn[]): ChatHistoryMessage[] {

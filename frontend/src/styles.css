@@ -504,7 +504,7 @@ button {
   flex: 0 0 auto;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
-  align-items: center;
+  align-items: end;
   margin: 0 28px 16px;
   min-height: 58px;
   border-radius: 999px;
@@ -539,9 +539,10 @@ button {
 
 .composer-input {
   width: 100%;
-  max-height: 142px;
+  max-height: 168px;
   min-height: 44px;
   resize: none;
+  overflow-y: hidden;
   border: 0;
   background: transparent;
   color: rgba(255, 255, 255, 0.96);
@@ -560,6 +561,7 @@ button {
   align-items: center;
   gap: 6px;
   min-height: 44px;
+  padding-bottom: 0;
 }
 
 .composer-icon-button,

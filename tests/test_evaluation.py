@@ -41,6 +41,10 @@ def test_gold_dataset_loads_current_release_cases() -> None:
     assert "norwegian_tax_card" in case_ids
     assert "norwegian_citizenship_check" in case_ids
     assert "follow_up_student_housing" in case_ids
+    assert "follow_up_d_number_appointment" in case_ids
+    assert "follow_up_study_permit_funds" in case_ids
+    assert "follow_up_sio_waiting_list" in case_ids
+    assert "personal_tax_record_refusal" in case_ids
     assert "mixed_language_tax_card" in case_ids
     assert "permanent_residence_legal_risk" in case_ids
     assert dataset.thresholds.citation_coverage == 0.95
