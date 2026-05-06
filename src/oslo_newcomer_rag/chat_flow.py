@@ -15,6 +15,152 @@ from oslo_newcomer_rag.retrieval import (
 )
 
 
+NORWEGIAN_WORDS = {
+    "at",
+    "av",
+    "bare",
+    "bli",
+    "bolig",
+    "den",
+    "der",
+    "det",
+    "dette",
+    "ditt",
+    "du",
+    "eller",
+    "etter",
+    "fastlege",
+    "fikk",
+    "for",
+    "fra",
+    "få",
+    "får",
+    "hallo",
+    "har",
+    "hei",
+    "her",
+    "hva",
+    "hvem",
+    "hvilke",
+    "hvis",
+    "hvor",
+    "hvordan",
+    "ikke",
+    "jeg",
+    "jobb",
+    "jobbe",
+    "kan",
+    "kommune",
+    "leiligheten",
+    "med",
+    "meg",
+    "mens",
+    "må",
+    "norge",
+    "norsk",
+    "norskkurs",
+    "om",
+    "oppholdstillatelse",
+    "penger",
+    "på",
+    "skal",
+    "skattekort",
+    "som",
+    "statsborgerskap",
+    "studere",
+    "studerer",
+    "søke",
+    "søker",
+    "tillatelse",
+    "tillatelsen",
+    "til",
+    "venteliste",
+    "ventelisten",
+    "å",
+}
+ENGLISH_WORDS = {
+    "after",
+    "am",
+    "and",
+    "any",
+    "apply",
+    "appointment",
+    "are",
+    "before",
+    "bars",
+    "best",
+    "book",
+    "bring",
+    "can",
+    "card",
+    "check",
+    "cheap",
+    "do",
+    "does",
+    "for",
+    "from",
+    "get",
+    "got",
+    "have",
+    "hello",
+    "hi",
+    "how",
+    "housing",
+    "if",
+    "international",
+    "job",
+    "letter",
+    "money",
+    "moving",
+    "my",
+    "number",
+    "office",
+    "owe",
+    "permit",
+    "personal",
+    "received",
+    "records",
+    "residence",
+    "saying",
+    "should",
+    "student",
+    "students",
+    "study",
+    "tax",
+    "that",
+    "the",
+    "there",
+    "this",
+    "to",
+    "what",
+    "where",
+    "work",
+    "write",
+    "you",
+}
+NORWEGIAN_PHRASES = (
+    "hva med",
+    "hvor kan",
+    "hvordan får",
+    "kan jeg",
+    "må jeg",
+    "jeg skal",
+    "jeg har",
+    "oppholdstillatelse",
+)
+ENGLISH_PHRASES = (
+    "how do",
+    "where can",
+    "do i",
+    "can i",
+    "should i",
+    "i have",
+    "i just",
+    "tax card",
+    "residence permit",
+)
+NORWEGIAN_GREETING_WORDS = {"hei", "heisann", "hallo"}
+ENGLISH_GREETING_WORDS = {"hi", "hello", "hey"}
 FOLLOW_UP_STARTS = (
     "what about",
     "what else",
@@ -89,7 +235,30 @@ MAX_CONTEXT_MESSAGE_CHARS = 360
 
 
 def build_direct_answer(question: str, ui_language: str):
-    return direct_chat_answer(question, ui_language)
+    return direct_chat_answer(question, infer_answer_language(question, ui_language))
+
+
+def infer_answer_language(
+    question: str,
+    ui_language: str,
+    session_history: Sequence[ChatMessage] = (),
+) -> str:
+    clean_question = " ".join(question.split())
+    if not clean_question:
+        return _normalise_language(ui_language)
+
+    language = _detect_language(clean_question)
+    if language:
+        return language
+
+    for message in reversed(session_history):
+        if message.role != "user":
+            continue
+        language = _detect_language(message.content)
+        if language:
+            return language
+
+    return _normalise_language(ui_language)
 
 
 def build_retrieval_query(question: str, session_history: Sequence[ChatMessage]) -> str:
@@ -131,6 +300,38 @@ def retrieve_for_chat(
         for index, query in enumerate(queries)
     ]
     return _merge_retrieval_results(results)
+
+
+def _detect_language(text: str) -> str | None:
+    folded = text.casefold()
+    greeting = re.sub(r"[!?.\s,]+", " ", folded).strip()
+    if greeting in NORWEGIAN_GREETING_WORDS:
+        return "no"
+    if greeting in ENGLISH_GREETING_WORDS:
+        return "en"
+
+    words = re.findall(r"[\wøæåØÆÅ-]+", folded)
+    if not words:
+        return None
+
+    no_score = sum(1 for word in words if word in NORWEGIAN_WORDS)
+    en_score = sum(1 for word in words if word in ENGLISH_WORDS)
+    if re.search(r"\bI\b", text):
+        en_score += 1
+    if re.search(r"[æøåÆØÅ]", text):
+        no_score += 2
+    no_score += sum(2 for phrase in NORWEGIAN_PHRASES if phrase in folded)
+    en_score += sum(2 for phrase in ENGLISH_PHRASES if phrase in folded)
+
+    if no_score >= en_score + 2:
+        return "no"
+    if en_score >= no_score + 2:
+        return "en"
+    return None
+
+
+def _normalise_language(language: str) -> str:
+    return "no" if language.lower().startswith("no") else "en"
 
 
 def _looks_like_follow_up(question: str) -> bool:

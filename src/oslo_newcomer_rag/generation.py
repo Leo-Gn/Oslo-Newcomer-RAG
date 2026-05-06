@@ -301,6 +301,8 @@ def build_grounded_answer(
 
     answer = _expand_grouped_citations(raw_answer)
     answer = _keep_known_citation_markers(answer, source_map)
+    answer = _clean_answer_formatting(answer)
+    answer = _remove_unrelated_route_details(question=question, answer=answer)
     answer = _add_missing_citations(answer, default_id="S1")
     if disclaimer:
         answer = _remove_disclaimer_text(answer, disclaimer)
@@ -410,13 +412,28 @@ def _build_prompt(
         "Use only the supplied official source excerpts for factual public-service information. "
         "Keep the language simple, around B1/B2. "
         "Do not decide eligibility, fill forms, or invent missing rules. "
+        "For eligibility questions, do not start with a bare yes or no. Start by saying what the excerpts "
+        "do and do not establish, then give the supported general steps. "
         "Do not say 'sources you provided'; refer to them as stored official sources or excerpts. "
         "For legal-risk questions, answer only the supported general information and tell the user to check "
         "the relevant agency or qualified adviser for their own case. "
         "For follow-up questions, use the session history only to understand what the user refers to; "
         "the factual answer must still come from the source excerpts. "
+        "When a follow-up uses pronouns like it, that, this, there, det, den, or tillatelsen, resolve "
+        "the pronoun from the recent user and assistant turns. Do not answer with phrases like "
+        "'what you mean by it' or 'what you mean by that' when the recent topic is clear. "
+        "The session history may use a different language than the current UI. "
+        "Always answer in the requested answer language, not the history language. "
         "If the answer language differs from the source language, translate only supported details. "
         "If the excerpts partly answer the question, give the supported part instead of refusing. "
+        "Ignore excerpts that are clearly about a different permit route, benefit, or service than the "
+        "user's current topic. If the exact detail is missing for that topic, say that plainly and point "
+        "to the closest relevant official source instead of borrowing numbers or rules from another route. "
+        "Do not quote amounts, time limits, document lists, or eligibility rules from an unrelated route, "
+        "even to explain that they are unrelated. "
+        "Format answers for chat: use two to four short paragraphs, or a short bullet list for steps, "
+        "documents, conditions, or alternatives. Put a blank line between paragraphs or bullet groups. "
+        "Avoid one dense paragraph. Do not use Markdown bold, tables, or headings. "
         "Every factual sentence about public rules, documents, dates, fees, services, or procedures "
         "must include a source marker like [S1]. "
         "Return only JSON with keys: answer, refusal."
@@ -576,6 +593,42 @@ def _add_missing_citations(answer: str, *, default_id: str) -> str:
 
 def _remove_disclaimer_text(answer: str, disclaimer: str) -> str:
     return answer.replace(disclaimer, "").strip()
+
+
+def _clean_answer_formatting(answer: str) -> str:
+    cleaned = answer.replace("**", "")
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    return cleaned.strip()
+
+
+def _remove_unrelated_route_details(*, question: str, answer: str) -> str:
+    folded_question = question.casefold()
+    folded_answer = answer.casefold()
+    is_study_topic = (
+        "studietillatelse" in folded_question
+        or "study permit" in folded_question
+        or "studietillatelse" in folded_answer
+        or "study permit" in folded_answer
+    )
+    if not is_study_topic:
+        return answer
+
+    unrelated_terms = (
+        "jobbsøker",
+        "arbeidsinnvandring",
+        "skilled worker",
+        "job seeker",
+        "work immigration",
+        "27 116",
+        "325 400",
+    )
+    paragraphs = [paragraph.strip() for paragraph in answer.split("\n\n") if paragraph.strip()]
+    kept = [
+        paragraph
+        for paragraph in paragraphs
+        if not any(term in paragraph.casefold() for term in unrelated_terms)
+    ]
+    return "\n\n".join(kept).strip() if kept else answer
 
 
 def _used_source_ids(answer: str) -> list[str]:

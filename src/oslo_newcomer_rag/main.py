@@ -10,7 +10,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from oslo_newcomer_rag.config import Settings, get_settings
-from oslo_newcomer_rag.chat_flow import build_direct_answer, retrieve_for_chat
+from oslo_newcomer_rag.chat_flow import build_direct_answer, infer_answer_language, retrieve_for_chat
 from oslo_newcomer_rag.db.models import AnonymousFeedback, Document, DocumentChunk, Source
 from oslo_newcomer_rag.db.session import check_database, create_engine_from_settings
 from oslo_newcomer_rag.generation import (
@@ -205,17 +205,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 GenerationChatMessage(role=message.role, content=message.content)
                 for message in request.session_history
             ]
+            answer_language = infer_answer_language(request.question, request.ui_language, session_history)
             with Session(engine) as session:
                 retrieval = retrieve_for_chat(
                     session,
                     embedder,
                     question=request.question,
-                    ui_language=request.ui_language,
+                    ui_language=answer_language,
                     session_history=session_history,
                 )
                 answer = build_grounded_answer(
                     question=request.question,
-                    ui_language=request.ui_language,
+                    ui_language=answer_language,
                     retrieval=retrieval,
                     chat_client=chat_client,
                     session_history=session_history,

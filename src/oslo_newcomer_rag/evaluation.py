@@ -12,7 +12,7 @@ from typing import Any, Protocol
 import yaml
 from sqlalchemy.orm import Session
 
-from oslo_newcomer_rag.chat_flow import build_direct_answer, build_retrieval_query
+from oslo_newcomer_rag.chat_flow import build_direct_answer, build_retrieval_query, infer_answer_language
 from oslo_newcomer_rag.config import Settings, get_settings
 from oslo_newcomer_rag.db.session import create_engine_from_settings
 from oslo_newcomer_rag.generation import (
@@ -353,7 +353,10 @@ def evaluate_case(
         answer_relevance=_average(keyword_relevance, judge_scores.answer_relevance),
         citation_coverage=citation_coverage(answer, retrieval),
         refusal_correctness=refusal_correctness(case, answer),
-        language_match=language_match(answer.answer, case.ui_language),
+        language_match=language_match(
+            answer.answer,
+            infer_answer_language(case.question, case.ui_language, case.session_history),
+        ),
     )
     return CaseResult(
         case=case,
@@ -384,18 +387,19 @@ def run_live_evaluation(
     try:
         with Session(engine) as session:
             for case in cases:
+                answer_language = infer_answer_language(case.question, case.ui_language, case.session_history)
                 direct_answer = build_direct_answer(case.question, case.ui_language)
                 if direct_answer:
                     retrieval = RetrievalResult(query=case.question, chunks=[], low_confidence=True)
                     answer = direct_answer
                 else:
                     retrieval_query = build_retrieval_query(case.question, case.session_history)
-                    if case.retrieval_language == case.ui_language:
+                    if case.retrieval_language == answer_language:
                         retrieval = retrieve_chunks_with_language_fallback(
                             session,
                             embedder,
                             retrieval_query,
-                            preferred_language=case.ui_language,
+                            preferred_language=answer_language,
                             log_query=False,
                         )
                     else:
@@ -408,7 +412,7 @@ def run_live_evaluation(
                         )
                     answer = build_grounded_answer(
                         question=case.question,
-                        ui_language=case.ui_language,
+                        ui_language=answer_language,
                         retrieval=retrieval,
                         chat_client=chat_client,
                         session_history=case.session_history,

@@ -1,5 +1,37 @@
-from oslo_newcomer_rag.chat_flow import build_retrieval_queries, build_retrieval_query
+from oslo_newcomer_rag.chat_flow import build_direct_answer, build_retrieval_queries, build_retrieval_query, infer_answer_language
 from oslo_newcomer_rag.generation import ChatMessage
+
+
+def test_answer_language_follows_current_message_not_ui_toggle() -> None:
+    assert infer_answer_language("I just got a job in Oslo. How do I get a D-number?", "no") == "en"
+    assert (
+        infer_answer_language("What are the best cheap bars in Grünerløkka for international students?", "no")
+        == "en"
+    )
+    assert (
+        infer_answer_language(
+            "Hei! Jeg er en internasjonal student. Hvordan søker jeg om studietillatelse?",
+            "en",
+        )
+        == "no"
+    )
+
+
+def test_ambiguous_answer_language_can_fall_back_to_recent_user_message() -> None:
+    language = infer_answer_language(
+        "Next?",
+        "no",
+        [ChatMessage(role="user", content="How do I apply for student housing through SiO?")],
+    )
+
+    assert language == "en"
+
+
+def test_direct_greeting_uses_message_language_over_ui_language() -> None:
+    answer = build_direct_answer("hi", "no")
+
+    assert answer is not None
+    assert answer.answer.startswith("Hi!")
 
 
 def test_short_follow_up_uses_recent_user_question_for_retrieval() -> None:

@@ -58,6 +58,7 @@ export type SourceRow = {
 
 export type ChatTurn = {
   id: string;
+  language: UiLanguage;
   question: string;
   response: ChatResponse;
 };

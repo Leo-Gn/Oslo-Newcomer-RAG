@@ -204,6 +204,7 @@ function App() {
         ...current,
         {
           id: response.answer_id || makeId(),
+          language,
           question: trimmed,
           response
         }
@@ -336,7 +337,6 @@ function App() {
                   {turns.map((turn) => (
                     <ChatExchange
                       copiedMessageId={copiedMessageId}
-                      copy={copy}
                       key={turn.id}
                       feedbackStatus={feedbackByAnswer[turn.response.answer_id]}
                       onFeedback={(rating) => void sendTurnFeedback(turn, rating)}
@@ -539,20 +539,19 @@ function LanguageSwitch({
 
 function ChatExchange({
   copiedMessageId,
-  copy,
   feedbackStatus,
   onFeedback,
   onCopy,
   turn
 }: {
   copiedMessageId: string | null;
-  copy: (typeof text)[UiLanguage];
   feedbackStatus?: FeedbackStatus;
   onFeedback: (rating: FeedbackRating) => void;
   onCopy: (id: string, value: string) => void;
   turn: ChatTurn;
 }) {
   const response = turn.response;
+  const copy = text[turn.language];
   const citations = compactCitations(response.citations);
   const questionCopyId = `${turn.id}-question`;
   const answerCopyId = `${turn.id}-answer`;
@@ -757,7 +756,7 @@ function resizeComposer(element: HTMLTextAreaElement | null) {
     return;
   }
 
-  element.style.height = "0px";
+  element.style.height = "auto";
   const nextHeight = Math.min(element.scrollHeight, MAX_COMPOSER_HEIGHT);
   element.style.height = `${nextHeight}px`;
   element.style.overflowY = element.scrollHeight > MAX_COMPOSER_HEIGHT ? "auto" : "hidden";

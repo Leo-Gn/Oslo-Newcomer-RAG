@@ -271,9 +271,24 @@ test("composer grows for longer drafts before scrolling", async ({ page }) => {
     height: element.getBoundingClientRect().height,
     overflowY: getComputedStyle(element).overflowY
   }));
+  const alignment = await page.locator(".composer").evaluate((element) => {
+    const composerBox = element.getBoundingClientRect();
+    const buttonBox = element.querySelector(".send-button")?.getBoundingClientRect();
+    if (!buttonBox) {
+      return Number.POSITIVE_INFINITY;
+    }
+    return Math.abs(
+      composerBox.top + composerBox.height / 2 - (buttonBox.top + buttonBox.height / 2)
+    );
+  });
+  const shellRadius = await page
+    .locator(".composer")
+    .evaluate((element) => Number.parseFloat(getComputedStyle(element).borderTopLeftRadius));
 
   expect(expanded.height).toBeGreaterThan(initialHeight);
   expect(expanded.overflowY).toBe("hidden");
+  expect(alignment).toBeLessThan(3);
+  expect(shellRadius).toBeLessThanOrEqual(32);
 });
 
 test("composer stays editable while an answer is pending", async ({ page }) => {
@@ -356,7 +371,7 @@ test("language toggle sends Norwegian requests", async ({ page }) => {
   });
 
   await page.goto("/");
-  await page.getByRole("button", { name: "NO" }).click();
+  await page.getByRole("button", { name: "NO", exact: true }).click();
   await expect(page.getByPlaceholder("Skriv spørsmålet ditt her...")).toBeVisible();
   await expect(page.getByText("Hjelper deg med norsk byråkrati via offentlige kilder.")).toBeVisible();
 
@@ -365,6 +380,53 @@ test("language toggle sends Norwegian requests", async ({ page }) => {
 
   await expect.poll(() => postedLanguage).toBe("no");
   await expect(page.getByText("Du kan starte med offentlige kilder. [S1]")).toBeVisible();
+});
+
+test("switching language keeps earlier turn labels stable", async ({ page }) => {
+  await page.route("**/api/chat", async (route) => {
+    const request = route.request().postDataJSON();
+    const isNorwegian = request.ui_language === "no";
+    await route.fulfill({
+      json: {
+        answer_id: isNorwegian ? "answer-no" : "answer-en",
+        answer: isNorwegian ? "Dette svaret er på norsk. [S1]" : "This answer is in English. [S1]",
+        refused: false,
+        disclaimer: null,
+        citations: [
+          {
+            citation_id: "S1",
+            chunk_id: "chunk-1",
+            source_owner: "UDI",
+            source_url: "https://www.udi.no/en/",
+            section_url: "https://www.udi.no/en/#moving",
+            section_heading: "Moving to Norway",
+            collected_at: "2026-02-01T10:00:00Z",
+            official_last_updated_at: "2026-01-20T09:00:00Z"
+          }
+        ],
+        data_currency: {
+          collected_at: "2026-02-01T10:00:00Z",
+          official_last_updated_at: "2026-01-20T09:00:00Z"
+        }
+      }
+    });
+  });
+
+  await page.goto("/");
+  await page.getByPlaceholder("Type your question here...").fill("What should I check after moving?");
+  await page.getByRole("button", { name: "Send" }).click();
+  await expect(page.getByText("This answer is in English. [S1]")).toBeVisible();
+
+  await page.getByRole("button", { name: "NO", exact: true }).click();
+  await page.getByPlaceholder("Skriv spørsmålet ditt her...").fill("Hva med skattekort?");
+  await page.getByRole("button", { name: "Send" }).click();
+  await expect(page.getByText("Dette svaret er på norsk. [S1]")).toBeVisible();
+
+  const exchanges = page.locator("article");
+  await expect(exchanges.nth(0)).toContainText("You");
+  await expect(exchanges.nth(0)).toContainText("Answer");
+  await expect(exchanges.nth(1)).toContainText("Du");
+  await expect(exchanges.nth(1)).toContainText("Svar");
 });
 
 test("follow-up questions send session history", async ({ page }) => {

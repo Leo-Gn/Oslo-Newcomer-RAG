@@ -210,6 +210,72 @@ def test_uncited_generated_answer_gets_source_marker() -> None:
     assert answer.citations[0].citation_id == "S1"
 
 
+def test_markdown_bold_markers_are_removed_from_answer_text() -> None:
+    chat_client = StubChatClient(
+        {
+            "answer": "Check **UDI** for the relevant permit route. [S1]",
+            "refusal": False,
+        }
+    )
+
+    answer = build_grounded_answer(
+        question="Where should I check?",
+        ui_language="en",
+        retrieval=_retrieval([_chunk()]),
+        chat_client=chat_client,
+    )
+
+    assert answer.answer == "Check UDI for the relevant permit route. [S1]"
+
+
+def test_study_permit_answer_drops_unrelated_route_amounts() -> None:
+    chat_client = StubChatClient(
+        {
+            "answer": (
+                "UDI does not give the exact study permit amount in these excerpts. [S1]\n\n"
+                "The amount NOK 27 116 belongs to a job seeker route. [S2]\n\n"
+                "Check UDI for the current study permit requirement. [S1]"
+            ),
+            "refusal": False,
+        }
+    )
+
+    answer = build_grounded_answer(
+        question="How much money for a study permit?",
+        ui_language="en",
+        retrieval=_retrieval([_chunk(), _chunk(section_heading="Job seeker funds")]),
+        chat_client=chat_client,
+    )
+
+    assert "27 116" not in answer.answer
+    assert "job seeker" not in answer.answer
+    assert "study permit" in answer.answer
+
+
+def test_prompt_keeps_current_language_when_history_was_norwegian() -> None:
+    chat_client = StubChatClient(
+        {
+            "answer": "Check the official tax information for the current procedure. [S1]",
+            "refusal": False,
+        }
+    )
+
+    build_grounded_answer(
+        question="What should I do next?",
+        ui_language="en",
+        retrieval=_retrieval([_chunk()]),
+        chat_client=chat_client,
+        session_history=[
+            ChatMessage(role="user", content="Hva med skattekort?"),
+            ChatMessage(role="assistant", content="Sjekk Skatteetaten. [S1]"),
+        ],
+    )
+
+    assert "Always answer in the requested answer language" in chat_client.messages[0].content
+    assert "Answer language: English" in chat_client.messages[1].content
+    assert "Hva med skattekort?" in chat_client.messages[1].content
+
+
 def test_plain_model_text_is_accepted_and_cited() -> None:
     class PlainTextChatClient:
         def complete(self, messages: Sequence[ChatMessage]) -> str:
