@@ -10,7 +10,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from oslo_newcomer_rag.config import Settings, get_settings
-from oslo_newcomer_rag.chat_flow import build_direct_answer, infer_answer_language, retrieve_for_chat
+from oslo_newcomer_rag.chat_flow import build_boundary_answer, infer_answer_language, retrieve_for_chat
 from oslo_newcomer_rag.db.models import AnonymousFeedback, Document, DocumentChunk, Source
 from oslo_newcomer_rag.db.session import check_database, create_engine_from_settings
 from oslo_newcomer_rag.generation import (
@@ -20,6 +20,8 @@ from oslo_newcomer_rag.generation import (
     DataCurrency,
     GroundedAnswer,
     OpenAICompatibleChatClient,
+    build_chat_plan,
+    build_general_chat_answer,
     build_grounded_answer,
 )
 from oslo_newcomer_rag.retrieval import (
@@ -188,24 +190,69 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @api.post("/api/chat", response_model=ChatResponse, tags=["chat"])
     async def chat(request: ChatRequest) -> ChatResponse:
-        direct_answer = build_direct_answer(request.question, request.ui_language)
+        session_history = [
+            GenerationChatMessage(role=message.role, content=message.content)
+            for message in request.session_history
+        ]
+        answer_language = infer_answer_language(request.question, request.ui_language, session_history)
+
+        direct_answer = build_boundary_answer(request.question, answer_language)
         if direct_answer:
             return _chat_response(direct_answer)
 
+        if not app_settings.has_llm_config and not app_settings.has_database_config:
+            raise HTTPException(status_code=503, detail="DATABASE_URL is not configured")
+
+        chat_client: OpenAICompatibleChatClient | None = None
+        try:
+            chat_client = OpenAICompatibleChatClient(app_settings)
+            chat_plan = build_chat_plan(
+                question=request.question,
+                ui_language=answer_language,
+                chat_client=chat_client,
+                session_history=session_history,
+            )
+        except ChatConfigError as exc:
+            if chat_client:
+                chat_client.close()
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except ChatResponseError as exc:
+            if chat_client:
+                chat_client.close()
+            raise HTTPException(status_code=502, detail="Model provider returned an invalid answer") from exc
+        except httpx.HTTPError as exc:
+            if chat_client:
+                chat_client.close()
+            raise HTTPException(status_code=502, detail="Model provider request failed") from exc
+
+        if chat_plan.mode == "general_chat":
+            try:
+                answer = build_general_chat_answer(
+                    question=request.question,
+                    ui_language=answer_language,
+                    chat_client=chat_client,
+                    session_history=session_history,
+                )
+            except ChatConfigError as exc:
+                raise HTTPException(status_code=503, detail=str(exc)) from exc
+            except ChatResponseError as exc:
+                raise HTTPException(status_code=502, detail="Model provider returned an invalid answer") from exc
+            except httpx.HTTPError as exc:
+                raise HTTPException(status_code=502, detail="Model provider request failed") from exc
+            finally:
+                if chat_client:
+                    chat_client.close()
+            return _chat_response(answer)
+
         if not app_settings.has_database_config:
+            if chat_client:
+                chat_client.close()
             raise HTTPException(status_code=503, detail="DATABASE_URL is not configured")
 
         engine = create_engine_from_settings(app_settings)
         embedder: OpenAICompatibleEmbeddingClient | None = None
-        chat_client: OpenAICompatibleChatClient | None = None
         try:
             embedder = OpenAICompatibleEmbeddingClient(app_settings)
-            chat_client = OpenAICompatibleChatClient(app_settings)
-            session_history = [
-                GenerationChatMessage(role=message.role, content=message.content)
-                for message in request.session_history
-            ]
-            answer_language = infer_answer_language(request.question, request.ui_language, session_history)
             with Session(engine) as session:
                 retrieval = retrieve_for_chat(
                     session,
@@ -213,6 +260,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     question=request.question,
                     ui_language=answer_language,
                     session_history=session_history,
+                    planned_query=chat_plan.retrieval_query,
                 )
                 answer = build_grounded_answer(
                     question=request.question,

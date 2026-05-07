@@ -25,7 +25,7 @@ from oslo_newcomer_rag.evaluation import (
     run_live_evaluation,
     write_reports,
 )
-from oslo_newcomer_rag.generation import Citation, DataCurrency, GroundedAnswer
+from oslo_newcomer_rag.generation import ChatPlan, Citation, DataCurrency, GroundedAnswer
 from oslo_newcomer_rag.retrieval import RetrievalResult, RetrievedChunk
 
 
@@ -187,6 +187,10 @@ cases:
     monkeypatch.setattr("oslo_newcomer_rag.evaluation.OpenAICompatibleEmbeddingClient", lambda settings: FakeClient())
     monkeypatch.setattr("oslo_newcomer_rag.evaluation.OpenAICompatibleChatClient", lambda settings: FakeClient())
     monkeypatch.setattr("oslo_newcomer_rag.evaluation.LlmJudge", lambda chat_client: StaticJudge(JudgeScores(1, 1, "ok")))
+    monkeypatch.setattr(
+        "oslo_newcomer_rag.evaluation.build_chat_plan",
+        lambda **kwargs: ChatPlan(mode="rag", retrieval_query=kwargs["question"]),
+    )
     monkeypatch.setattr("oslo_newcomer_rag.evaluation.retrieve_chunks_with_language_fallback", fake_retrieve)
     monkeypatch.setattr("oslo_newcomer_rag.evaluation.build_grounded_answer", fake_answer)
 

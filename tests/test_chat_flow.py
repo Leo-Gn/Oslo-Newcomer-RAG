@@ -1,5 +1,15 @@
-from oslo_newcomer_rag.chat_flow import build_direct_answer, build_retrieval_queries, build_retrieval_query, infer_answer_language
+from datetime import UTC, datetime
+
+from oslo_newcomer_rag.chat_flow import (
+    _focus_topic_source_chunks,
+    build_boundary_answer,
+    build_retrieval_queries,
+    build_retrieval_query,
+    infer_answer_language,
+    should_use_general_chat,
+)
 from oslo_newcomer_rag.generation import ChatMessage
+from oslo_newcomer_rag.retrieval import RetrievalResult, RetrievedChunk
 
 
 def test_answer_language_follows_current_message_not_ui_toggle() -> None:
@@ -27,11 +37,12 @@ def test_ambiguous_answer_language_can_fall_back_to_recent_user_message() -> Non
     assert language == "en"
 
 
-def test_direct_greeting_uses_message_language_over_ui_language() -> None:
-    answer = build_direct_answer("hi", "no")
+def test_greeting_uses_general_chat_instead_of_boundary_answer() -> None:
+    answer = build_boundary_answer("hi", "no")
 
-    assert answer is not None
-    assert answer.answer.startswith("Hi!")
+    assert answer is None
+    assert should_use_general_chat("hi") is True
+    assert should_use_general_chat("what can you do?") is True
 
 
 def test_short_follow_up_uses_recent_user_question_for_retrieval() -> None:
@@ -128,3 +139,118 @@ def test_dagpenger_follow_up_keeps_nav_context() -> None:
 
     assert "unemployment benefits" in query
     assert "jobseeker" in query
+
+
+def test_source_navigation_examples_get_topic_hint_queries() -> None:
+    family_queries = build_retrieval_queries("Where can I read about family immigration?", [])
+    citizenship_queries = build_retrieval_queries("Where can I check citizenship rules?", [])
+    permanent_queries = build_retrieval_queries("Where can I check information about permanent residence?", [])
+    typo_queries = build_retrieval_queries(
+        "what do I need to apply permananet residency",
+        [],
+        planned_query="permanent residence permit application requirements UDI",
+    )
+    citizenship_typo_queries = build_retrieval_queries(
+        "I have permanent residency, what do I need to apply to cetezenship?",
+        [],
+        planned_query="Norwegian citizenship application requirements for a person with permanent residence UDI",
+    )
+
+    assert len(family_queries) == 2
+    assert "Family immigration is also called family reunification" in family_queries[-1]
+    assert len(citizenship_queries) == 2
+    assert "become a Norwegian citizen" in citizenship_queries[-1]
+    assert len(permanent_queries) == 2
+    assert "permanent residence permit" in permanent_queries[-1]
+    assert any("permanent residence" in query for query in typo_queries)
+    assert "permanent residence permit" in typo_queries[-1]
+    assert any("citizenship" in query for query in citizenship_typo_queries)
+    assert any("become a Norwegian citizen" in query for query in citizenship_typo_queries)
+
+
+def test_source_navigation_examples_keep_matching_source_chunks() -> None:
+    result = RetrievalResult(
+        query="citizenship topic hint",
+        chunks=[
+            _chunk("https://www.udi.no/en/want-to-apply/citizenship/", "Citizenship", 0.49),
+            _chunk("https://www.udi.no/en/want-to-apply/work-immigration/", "Work immigration", 0.47),
+        ],
+        low_confidence=False,
+    )
+
+    focused = _focus_topic_source_chunks(result, "Where can I check citizenship rules?")
+
+    assert [chunk.source_url for chunk in focused.chunks] == [
+        "https://www.udi.no/en/want-to-apply/citizenship/"
+    ]
+
+
+def test_source_focus_handles_repaired_topic_wording() -> None:
+    result = RetrievalResult(
+        query="permanent residence topic hint",
+        chunks=[
+            _chunk(
+                "https://www.udi.no/en/want-to-apply/permanent-residence/permanent-residence-permit/",
+                "Permanent residence",
+                0.49,
+            ),
+            _chunk(
+                "https://www.skatteetaten.no/en/person/national-registry/moving/",
+                "National registry",
+                0.47,
+            ),
+        ],
+        low_confidence=False,
+    )
+
+    focused = _focus_topic_source_chunks(
+        result,
+        "what do I need to apply permanent residence",
+    )
+
+    assert [chunk.source_url for chunk in focused.chunks] == [
+        "https://www.udi.no/en/want-to-apply/permanent-residence/permanent-residence-permit/"
+    ]
+
+
+def test_citizenship_source_focus_treats_permanent_residence_as_context() -> None:
+    result = RetrievalResult(
+        query="citizenship and permanent residence",
+        chunks=[
+            _chunk("https://www.udi.no/en/want-to-apply/citizenship/", "Citizenship", 0.48),
+            _chunk(
+                "https://www.udi.no/en/want-to-apply/permanent-residence/permanent-residence-permit/",
+                "Permanent residence",
+                0.47,
+            ),
+        ],
+        low_confidence=False,
+    )
+
+    focused = _focus_topic_source_chunks(
+        result,
+        "I have permanent residence, what do I need to apply to citizenship?",
+    )
+
+    assert [chunk.source_url for chunk in focused.chunks] == [
+        "https://www.udi.no/en/want-to-apply/citizenship/"
+    ]
+
+
+def _chunk(source_url: str, heading: str, score: float) -> RetrievedChunk:
+    return RetrievedChunk(
+        chunk_id=f"chunk-{heading}",
+        source_id="source-1",
+        source_owner="UDI",
+        source_url=source_url,
+        category="immigration",
+        language="en",
+        section_heading=heading,
+        section_url=source_url,
+        text=heading,
+        collected_at=datetime(2026, 5, 3, tzinfo=UTC),
+        official_last_updated_at=None,
+        score=score,
+        vector_score=score,
+        keyword_score=0.0,
+    )

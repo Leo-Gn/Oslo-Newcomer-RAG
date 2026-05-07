@@ -12,7 +12,11 @@ from typing import Any, Protocol
 import yaml
 from sqlalchemy.orm import Session
 
-from oslo_newcomer_rag.chat_flow import build_direct_answer, build_retrieval_query, infer_answer_language
+from oslo_newcomer_rag.chat_flow import (
+    build_boundary_answer,
+    build_retrieval_query,
+    infer_answer_language,
+)
 from oslo_newcomer_rag.config import Settings, get_settings
 from oslo_newcomer_rag.db.session import create_engine_from_settings
 from oslo_newcomer_rag.generation import (
@@ -21,6 +25,8 @@ from oslo_newcomer_rag.generation import (
     Citation,
     GroundedAnswer,
     OpenAICompatibleChatClient,
+    build_chat_plan,
+    build_general_chat_answer,
     build_grounded_answer,
 )
 from oslo_newcomer_rag.retrieval import (
@@ -388,35 +394,54 @@ def run_live_evaluation(
         with Session(engine) as session:
             for case in cases:
                 answer_language = infer_answer_language(case.question, case.ui_language, case.session_history)
-                direct_answer = build_direct_answer(case.question, case.ui_language)
+                direct_answer = build_boundary_answer(case.question, answer_language)
                 if direct_answer:
                     retrieval = RetrievalResult(query=case.question, chunks=[], low_confidence=True)
                     answer = direct_answer
                 else:
-                    retrieval_query = build_retrieval_query(case.question, case.session_history)
-                    if case.retrieval_language == answer_language:
-                        retrieval = retrieve_chunks_with_language_fallback(
-                            session,
-                            embedder,
-                            retrieval_query,
-                            preferred_language=answer_language,
-                            log_query=False,
-                        )
-                    else:
-                        retrieval = retrieve_chunks(
-                            session,
-                            embedder,
-                            expand_retrieval_terms(retrieval_query),
-                            filters=RetrievalFilters(language=case.retrieval_language),
-                            log_query=False,
-                        )
-                    answer = build_grounded_answer(
+                    chat_plan = build_chat_plan(
                         question=case.question,
                         ui_language=answer_language,
-                        retrieval=retrieval,
                         chat_client=chat_client,
                         session_history=case.session_history,
                     )
+                    if chat_plan.mode == "general_chat":
+                        retrieval = RetrievalResult(query=case.question, chunks=[], low_confidence=True)
+                        answer = build_general_chat_answer(
+                            question=case.question,
+                            ui_language=answer_language,
+                            chat_client=chat_client,
+                            session_history=case.session_history,
+                        )
+                    else:
+                        retrieval_query = build_retrieval_query(
+                            case.question,
+                            case.session_history,
+                            planned_query=chat_plan.retrieval_query,
+                        )
+                        if case.retrieval_language == answer_language:
+                            retrieval = retrieve_chunks_with_language_fallback(
+                                session,
+                                embedder,
+                                retrieval_query,
+                                preferred_language=answer_language,
+                                log_query=False,
+                            )
+                        else:
+                            retrieval = retrieve_chunks(
+                                session,
+                                embedder,
+                                expand_retrieval_terms(retrieval_query),
+                                filters=RetrievalFilters(language=case.retrieval_language),
+                                log_query=False,
+                            )
+                        answer = build_grounded_answer(
+                            question=case.question,
+                            ui_language=answer_language,
+                            retrieval=retrieval,
+                            chat_client=chat_client,
+                            session_history=case.session_history,
+                        )
                 results.append(
                     evaluate_case(
                         case=case,
@@ -425,18 +450,16 @@ def run_live_evaluation(
                         judge=judge,
                     )
                 )
+        return EvalReport(
+            generated_at=datetime.now(tz=UTC),
+            dataset_path=str(dataset_path),
+            thresholds=dataset.thresholds,
+            results=tuple(results),
+        )
     finally:
         embedder.close()
         chat_client.close()
         engine.dispose()
-
-    return EvalReport(
-        generated_at=datetime.now(UTC),
-        dataset_path=str(dataset_path),
-        thresholds=dataset.thresholds,
-        results=tuple(results),
-    )
-
 
 def context_precision(case: GoldCase, retrieval: RetrievalResult) -> float:
     if not case.expected_retrieval:

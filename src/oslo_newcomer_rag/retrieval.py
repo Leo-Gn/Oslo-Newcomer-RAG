@@ -48,7 +48,9 @@ RETRIEVAL_GLOSSARY = {
     "eu/eøs": ("EU EEA", "right of residence"),
     "eea": ("EU EEA", "right of residence"),
     "arbeidstillatelse": ("work permit", "work immigration"),
+    "permanent residency": ("permanent residence", "permanent residence permit"),
     "permanent opphold": ("permanent residence",),
+    "citizenship": ("Norwegian citizenship", "Norwegian citizen", "UDI"),
     "norskkurs": ("Norwegian language course", "learn Norwegian"),
     "barnehage": ("kindergarten", "children families"),
     "flytter": ("moving to Norway", "first steps"),
@@ -443,9 +445,10 @@ def retrieve_chunks_with_language_fallback(
 
 
 def expand_retrieval_terms(query: str) -> str:
-    folded = query.casefold()
+    normalized_query = " ".join(query.split())
+    folded = normalized_query.casefold()
     additions: list[str] = []
-    seen = {query.casefold()}
+    seen = {normalized_query.casefold()}
     for term, translations in RETRIEVAL_GLOSSARY.items():
         if term not in folded:
             continue
@@ -455,8 +458,8 @@ def expand_retrieval_terms(query: str) -> str:
                 additions.append(translation)
                 seen.add(key)
     if not additions:
-        return query
-    return " ".join([query, *additions])
+        return normalized_query
+    return " ".join([normalized_query, *additions])
 
 
 @dataclass

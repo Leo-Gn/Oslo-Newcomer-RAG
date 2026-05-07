@@ -10,8 +10,11 @@ from oslo_newcomer_rag.config import Settings
 from oslo_newcomer_rag.generation import (
     ChatMessage,
     OpenAICompatibleChatClient,
+    build_chat_plan,
+    build_general_chat_answer,
     build_grounded_answer,
     direct_chat_answer,
+    is_general_chat_question,
     needs_legal_disclaimer,
 )
 from oslo_newcomer_rag.retrieval import RetrievedChunk, RetrievalResult
@@ -54,22 +57,88 @@ def test_supported_answer_includes_citations_and_data_currency() -> None:
     assert answer.data_currency.official_last_updated_at == datetime(2026, 1, 20, tzinfo=UTC)
 
 
-def test_greeting_returns_scoped_answer_without_model_call() -> None:
-    answer = direct_chat_answer("hi", "en")
+def test_greeting_uses_model_generated_general_chat() -> None:
+    chat_client = StubChatClient(
+        {
+            "answer": (
+                "Hi! I can help you turn Oslo newcomer questions into clear prompts, "
+                "and I can check stored official sources when you ask about permits, tax, ID numbers, "
+                "housing, healthcare, work, or student services."
+            ),
+            "refusal": False,
+        }
+    )
+
+    answer = build_general_chat_answer(
+        question="hi",
+        ui_language="en",
+        chat_client=chat_client,
+    )
 
     assert answer is not None
     assert answer.refused is False
     assert answer.citations == []
-    assert "moving to Oslo" in answer.answer
+    assert chat_client.calls == 1
+    assert "official sources" in answer.answer
 
 
-def test_norwegian_greeting_uses_requested_language() -> None:
-    answer = direct_chat_answer("Hei!", "no")
+def test_capability_question_uses_general_chat_without_citations() -> None:
+    chat_client = StubChatClient(
+        {
+            "answer": (
+                "I can help with simple chat and with official-source questions about moving to Oslo. "
+                "For rules, documents, and public services, ask a concrete question and I will use retrieval."
+            ),
+            "refusal": False,
+        }
+    )
+
+    answer = build_general_chat_answer(
+        question="what can you do?",
+        ui_language="en",
+        chat_client=chat_client,
+    )
 
     assert answer is not None
     assert answer.refused is False
     assert answer.citations == []
-    assert "skattekort" in answer.answer
+    assert "retrieval" in answer.answer
+    assert is_general_chat_question("what can you do?") is True
+
+
+def test_chat_plan_uses_model_for_route_and_query_repair() -> None:
+    chat_client = StubChatClient(
+        {
+            "mode": "rag",
+            "retrieval_query": (
+                "Norwegian citizenship application requirements for a person with permanent residence UDI"
+            ),
+        }
+    )
+
+    plan = build_chat_plan(
+        question="I have permanent residency, what do I need to apply to cetezenship?",
+        ui_language="en",
+        chat_client=chat_client,
+    )
+
+    assert plan.mode == "rag"
+    assert "citizenship" in plan.retrieval_query
+    assert "cetezenship" not in plan.retrieval_query
+    assert chat_client.calls == 1
+
+
+def test_chat_plan_can_route_casual_questions_without_sources() -> None:
+    chat_client = StubChatClient({"mode": "general_chat", "retrieval_query": ""})
+
+    plan = build_chat_plan(
+        question="How are you?",
+        ui_language="en",
+        chat_client=chat_client,
+    )
+
+    assert plan.mode == "general_chat"
+    assert plan.retrieval_query == "How are you?"
 
 
 def test_personal_record_request_is_refused_directly() -> None:
@@ -95,6 +164,30 @@ def test_appeal_letter_request_is_refused_with_disclaimer() -> None:
     assert answer.disclaimer is not None
     assert "not legal advice" in answer.disclaimer
     assert answer.disclaimer not in answer.answer
+
+
+def test_local_recommendation_request_is_refused_directly() -> None:
+    answer = direct_chat_answer(
+        "Where can I buy second-hand furniture near Grünerløkka this weekend?",
+        "en",
+    )
+
+    assert answer is not None
+    assert answer.refused is True
+    assert answer.citations == []
+    assert "cannot recommend" in answer.answer
+
+
+def test_cheap_bar_request_is_refused_directly() -> None:
+    answer = direct_chat_answer(
+        "What are the best cheap bars in Grünerløkka for international students?",
+        "en",
+    )
+
+    assert answer is not None
+    assert answer.refused is True
+    assert answer.citations == []
+    assert "cannot recommend" in answer.answer
 
 
 def test_chat_client_uses_openai_compatible_chat_completion_endpoint() -> None:
@@ -228,12 +321,102 @@ def test_markdown_bold_markers_are_removed_from_answer_text() -> None:
     assert answer.answer == "Check UDI for the relevant permit route. [S1]"
 
 
+def test_rag_source_wording_is_polished_for_chat() -> None:
+    chat_client = StubChatClient(
+        {
+            "answer": (
+                "These notes explain that D numbers are connected to residence permits. [S1]\n\n"
+                "The official info here do not list the exact documents to bring. [S1]\n\n"
+                "For your situation), The official information does not decide eligibility. [S1]\n\n"
+                "But those excerpts do not say anything specific about dagpenger. [S1]\n\n"
+                "The excerpt you provided does not list the full citizenship rules. [S1]\n\n"
+                "What you can do next, based on the official pages you shared: [S1]\n\n"
+                "These official pages do not say exactly what you must apply for. [S1]\n\n"
+                "The official UDI page you provided says to apply online. [S1]\n\n"
+                "Your excerpt doesn't include the exact checklist. [S1]\n\n"
+                "Choose the route based on what is missing in The official information. [S1]\n\n"
+                "The required residence period is not shown in The official information. [S1]\n\n"
+                "The official information from UDI do not list the full checklist. [S1]\n\n"
+                "These official UDI pages cover permanent residence. [S1]"
+            ),
+            "refusal": False,
+        }
+    )
+
+    answer = build_grounded_answer(
+        question="How do I get a D-number?",
+        ui_language="en",
+        retrieval=_retrieval([_chunk()]),
+        chat_client=chat_client,
+    )
+
+    assert "These pages" not in answer.answer
+    assert "These sources" not in answer.answer
+    assert "These notes" not in answer.answer
+    assert "official info here" not in answer.answer
+    assert "do not list" not in answer.answer
+    assert "), The official information" not in answer.answer
+    assert "those excerpts" not in answer.answer
+    assert "excerpt you provided" not in answer.answer
+    assert "pages you shared" not in answer.answer
+    assert "These official pages" not in answer.answer
+    assert "page you provided" not in answer.answer
+    assert "Your excerpt" not in answer.answer
+    assert "what is missing in The official information" not in answer.answer
+    assert "not shown in The official information" not in answer.answer
+    assert "from UDI do not" not in answer.answer
+    assert "These official UDI pages" not in answer.answer
+    assert answer.answer.startswith("Official information says")
+    assert "The official information here does not list" in answer.answer
+    assert "The UDI page says to apply online" in answer.answer
+    assert "The official information here does not include the exact checklist" in answer.answer
+
+
+def test_norwegian_source_wording_is_polished_for_chat() -> None:
+    chat_client = StubChatClient(
+        {
+            "answer": (
+                "De offisielle utdragene sier ikke et bestemt beløp. [S1]\n\n"
+                "Dette den offisielle informasjonen oppgir ikke beløpet. [S1]\n\n"
+                "Sjekk UDI for riktig beløp, siden dette ikke er oppgitt her. [S1]\n\n"
+                "Du må søke om tillatelse, men den gir ikke et tall. [S1]\n\n"
+                "Sjekk UDI, siden den offisielle informasjonen ikke oppgir beløpet. [S1]\n\n"
+                "UDI oppgir ikke i disse utdragene et generelt beløp. [S1]\n\n"
+                "Hvis du sier hvilken type tillatelse du mener (for eksempel studier), "
+                "kan jeg prøve å finne det som faktisk står i den offisielle informasjonen "
+                "for akkurat den ruten. [S1]"
+            ),
+            "refusal": False,
+        }
+    )
+
+    answer = build_grounded_answer(
+        question="Hvor mye penger må jeg bevise at jeg har?",
+        ui_language="no",
+        retrieval=_retrieval([_chunk()]),
+        chat_client=chat_client,
+    )
+
+    assert "utdragene" not in answer.answer
+    assert "De offisielle Den" not in answer.answer
+    assert "Dette den offisielle" not in answer.answer
+    assert "Den offisielle informasjonen sier ikke" in answer.answer
+    assert ", siden dette ikke er oppgitt" not in answer.answer
+    assert "Dette er ikke oppgitt her" in answer.answer
+    assert ", men den gir ikke" not in answer.answer
+    assert "Den gir ikke et tall" in answer.answer
+    assert ", siden den offisielle informasjonen" not in answer.answer
+    assert "i disse den offisielle informasjonen" not in answer.answer
+    assert "hvilken type tillatelse du mener" not in answer.answer
+
+
 def test_study_permit_answer_drops_unrelated_route_amounts() -> None:
     chat_client = StubChatClient(
         {
             "answer": (
                 "UDI does not give the exact study permit amount in these excerpts. [S1]\n\n"
                 "The amount NOK 27 116 belongs to a job seeker route. [S2]\n\n"
+                "The money must be your own and usually be in a Norwegian bank account. [S2]\n\n"
                 "Check UDI for the current study permit requirement. [S1]"
             ),
             "refusal": False,
@@ -249,6 +432,7 @@ def test_study_permit_answer_drops_unrelated_route_amounts() -> None:
 
     assert "27 116" not in answer.answer
     assert "job seeker" not in answer.answer
+    assert "Norwegian bank account" not in answer.answer
     assert "study permit" in answer.answer
 
 

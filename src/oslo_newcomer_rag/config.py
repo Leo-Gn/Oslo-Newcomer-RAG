@@ -52,6 +52,10 @@ class Settings(BaseSettings):
     def has_database_config(self) -> bool:
         return bool(self.database_url)
 
+    @property
+    def has_llm_config(self) -> bool:
+        return bool(self.llm_base_url and self.llm_api_key and self.llm_model)
+
 
 @lru_cache
 def get_settings() -> Settings:

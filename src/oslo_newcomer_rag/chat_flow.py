@@ -5,7 +5,7 @@ from collections.abc import Sequence
 
 from sqlalchemy.orm import Session
 
-from oslo_newcomer_rag.generation import ChatMessage, direct_chat_answer
+from oslo_newcomer_rag.generation import ChatMessage, direct_chat_answer, is_general_chat_question
 from oslo_newcomer_rag.retrieval import (
     OpenAICompatibleEmbeddingClient,
     RetrievalResult,
@@ -232,10 +232,41 @@ REFUSAL_MARKERS = (
     "kunne ikke svare trygt",
 )
 MAX_CONTEXT_MESSAGE_CHARS = 360
+TOPIC_QUERY_HINTS = (
+    (
+        ("family immigration", "family reunification", "familieinnvandring", "familiegjenforening"),
+        "The applicant is the person who wishes to visit or live in Norway. "
+        "Family immigration is also called family reunification. "
+        "Spouse cohabitant child UDI family immigration",
+        ("https://www.udi.no/en/want-to-apply/family-immigration/",),
+    ),
+    (
+        ("citizenship", "norwegian citizen", "statsborgerskap", "norsk statsborger"),
+        "The applicant is the person who wishes to become a Norwegian citizen. "
+        "Norwegian citizenship citizenship rules UDI",
+        ("https://www.udi.no/en/want-to-apply/citizenship/",),
+    ),
+    (
+        ("permanent residence", "permanent residence permit", "permanent opphold", "permanent oppholdstillatelse"),
+        "Apply for a permanent residence permit. "
+        "Permanent residence permit eligible requirements Norwegian language social studies UDI",
+        ("https://www.udi.no/en/want-to-apply/permanent-residence/permanent-residence-permit/",),
+    ),
+    (
+        ("residence card", "residence cards", "oppholdskort"),
+        "Residence card proves that you have been granted a residence permit in Norway. "
+        "Residence card UDI police appointment EU EEA family members",
+        ("https://www.udi.no/en/word-definitions/-residence-cards/",),
+    ),
+)
 
 
-def build_direct_answer(question: str, ui_language: str):
+def build_boundary_answer(question: str, ui_language: str):
     return direct_chat_answer(question, infer_answer_language(question, ui_language))
+
+
+def should_use_general_chat(question: str) -> bool:
+    return is_general_chat_question(question)
 
 
 def infer_answer_language(
@@ -261,22 +292,37 @@ def infer_answer_language(
     return _normalise_language(ui_language)
 
 
-def build_retrieval_query(question: str, session_history: Sequence[ChatMessage]) -> str:
-    return build_retrieval_queries(question, session_history)[-1]
+def build_retrieval_query(
+    question: str,
+    session_history: Sequence[ChatMessage],
+    *,
+    planned_query: str | None = None,
+) -> str:
+    return build_retrieval_queries(question, session_history, planned_query=planned_query)[-1]
 
 
-def build_retrieval_queries(question: str, session_history: Sequence[ChatMessage]) -> list[str]:
+def build_retrieval_queries(
+    question: str,
+    session_history: Sequence[ChatMessage],
+    *,
+    planned_query: str | None = None,
+) -> list[str]:
     clean_question = " ".join(question.split())
+    search_question = " ".join((planned_query or clean_question).split())
     context = _conversation_context(session_history)
-    expanded_question = expand_retrieval_terms(clean_question)
+    queries = [expand_retrieval_terms(clean_question)]
+    expanded_question = expand_retrieval_terms(search_question)
+    if expanded_question.casefold() != queries[0].casefold():
+        queries.append(expanded_question)
 
-    if not context or not _looks_like_follow_up(clean_question):
-        return [expanded_question]
+    if context and _looks_like_follow_up(search_question):
+        contextual = expand_retrieval_terms(f"{context} {search_question}")
+        if contextual != expanded_question:
+            queries.append(contextual)
 
-    contextual = expand_retrieval_terms(f"{context} {clean_question}")
-    if contextual == expanded_question:
-        return [expanded_question]
-    return [expanded_question, contextual]
+    topic_text = f"{context} {clean_question} {search_question}".strip()
+    queries.extend(_topic_hint_queries(topic_text))
+    return _dedupe_queries(queries)
 
 
 def retrieve_for_chat(
@@ -286,9 +332,10 @@ def retrieve_for_chat(
     question: str,
     ui_language: str,
     session_history: Sequence[ChatMessage],
+    planned_query: str | None = None,
     log_query: bool = True,
 ) -> RetrievalResult:
-    queries = build_retrieval_queries(question, session_history)
+    queries = build_retrieval_queries(question, session_history, planned_query=planned_query)
     results = [
         retrieve_chunks_with_language_fallback(
             session,
@@ -299,7 +346,8 @@ def retrieve_for_chat(
         )
         for index, query in enumerate(queries)
     ]
-    return _merge_retrieval_results(results)
+    merged = _merge_retrieval_results(results)
+    return _focus_topic_source_chunks(merged, planned_query or question)
 
 
 def _detect_language(text: str) -> str | None:
@@ -369,6 +417,53 @@ def _is_generic_refusal(content: str) -> bool:
 
 def _strip_citations(content: str) -> str:
     return re.sub(r"\[S\d+\]", "", content).strip()
+
+
+def _topic_hint_queries(text: str) -> list[str]:
+    folded = text.casefold()
+    return [query for triggers, query, _ in TOPIC_QUERY_HINTS if any(trigger in folded for trigger in triggers)]
+
+
+def _topic_source_urls(text: str) -> tuple[str, ...]:
+    folded = text.casefold()
+    if any(trigger in folded for trigger in TOPIC_QUERY_HINTS[1][0]):
+        return TOPIC_QUERY_HINTS[1][2]
+
+    urls: list[str] = []
+    for triggers, _, source_urls in TOPIC_QUERY_HINTS:
+        if any(trigger in folded for trigger in triggers):
+            urls.extend(source_urls)
+    return tuple(dict.fromkeys(urls))
+
+
+def _dedupe_queries(queries: Sequence[str]) -> list[str]:
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for query in queries:
+        clean_query = " ".join(query.split())
+        key = clean_query.casefold()
+        if not clean_query or key in seen:
+            continue
+        deduped.append(clean_query)
+        seen.add(key)
+    return deduped
+
+
+def _focus_topic_source_chunks(result: RetrievalResult, question: str) -> RetrievalResult:
+    source_urls = _topic_source_urls(question)
+    if not source_urls or not result.chunks:
+        return result
+
+    focused = [chunk for chunk in result.chunks if chunk.source_url in source_urls]
+    if not focused:
+        return result
+
+    return RetrievalResult(
+        query=result.query,
+        chunks=focused[:6],
+        low_confidence=False,
+        language_fallback_used=result.language_fallback_used,
+    )
 
 
 def _merge_retrieval_results(results: Sequence[RetrievalResult]) -> RetrievalResult:

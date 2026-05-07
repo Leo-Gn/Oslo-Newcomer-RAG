@@ -78,6 +78,24 @@ PERSONAL_RECORD_TERMS = (
     "status på saken",
     "status på søknaden",
 )
+LOCAL_RECOMMENDATION_TERMS = (
+    "cheap bar",
+    "cheap bars",
+    "best bar",
+    "best bars",
+    "restaurant",
+    "restaurants",
+    "nightlife",
+    "buy second-hand",
+    "buy second hand",
+    "second-hand furniture",
+    "second hand furniture",
+    "billig bar",
+    "billige barer",
+    "uteliv",
+    "bruktmøbler",
+    "brukte møbler",
+)
 LEGAL_DRAFTING_TERMS = (
     "write an appeal",
     "appeal letter",
@@ -92,6 +110,34 @@ LEGAL_DRAFTING_TERMS = (
     "fylle ut skjema",
     "fylle skjema",
 )
+CAPABILITY_TERMS = (
+    "what can you do",
+    "what do you do",
+    "what are you",
+    "who are you",
+    "how are you",
+    "how's it going",
+    "hows it going",
+    "how can you help",
+    "can you help me",
+    "help me",
+    "what can i ask",
+    "what should i ask",
+    "hva kan du gjøre",
+    "hva gjør du",
+    "hvem er du",
+    "hvordan går det",
+    "hvordan kan du hjelpe",
+    "kan du hjelpe meg",
+    "hjelp meg",
+    "hva kan jeg spørre",
+)
+THANKS_TERMS = {
+    "thanks",
+    "thank you",
+    "takk",
+    "tusen takk",
+}
 
 
 @dataclass(frozen=True)
@@ -128,27 +174,55 @@ class GroundedAnswer:
     data_currency: DataCurrency
 
 
+@dataclass(frozen=True)
+class ChatPlan:
+    mode: str
+    retrieval_query: str
+
+
 def direct_chat_answer(question: str, ui_language: str) -> GroundedAnswer | None:
     language = _normalise_language(ui_language)
-    boundary_answer = _boundary_answer(question, language)
-    if boundary_answer:
-        return boundary_answer
+    return _boundary_answer(question, language)
 
-    if not is_greeting(question):
-        return None
 
-    if language == "no":
-        answer = (
-            "Hei! Jeg kan hjelpe med spørsmål om å flytte til Oslo, oppholdstillatelser, "
-            "skattekort, ID-nummer, arbeid, bolig, helsetjenester og studentressurser. "
-            "Still gjerne et konkret spørsmål, så sjekker jeg de lagrede offentlige kildene."
-        )
-    else:
-        answer = (
-            "Hi! I can help with questions about moving to Oslo, residence permits, tax cards, "
-            "ID numbers, work, housing, healthcare, and student resources. Ask a concrete question, "
-            "and I will check the stored official sources."
-        )
+def is_greeting(question: str) -> bool:
+    cleaned = re.sub(r"[!?.\s,]+", " ", question.casefold()).strip()
+    if not cleaned:
+        return False
+    return cleaned in GREETING_TERMS
+
+
+def is_general_chat_question(question: str) -> bool:
+    cleaned = re.sub(r"[!?.\s,]+", " ", question.casefold()).strip()
+    if not cleaned:
+        return False
+    if is_greeting(question) or cleaned in THANKS_TERMS:
+        return True
+    return any(term in cleaned for term in CAPABILITY_TERMS)
+
+
+def build_general_chat_answer(
+    *,
+    question: str,
+    ui_language: str,
+    chat_client: ChatClient,
+    session_history: Sequence[ChatMessage] = (),
+) -> GroundedAnswer:
+    language = _normalise_language(ui_language)
+    messages = _build_general_chat_prompt(
+        question=question,
+        language=language,
+        session_history=session_history,
+    )
+    model_text = chat_client.complete(messages)
+    parsed = _parse_model_answer(model_text)
+    answer = str(parsed.get("answer") or "").strip()
+    if not answer:
+        answer = model_text.strip()
+
+    answer = _clean_answer_formatting(answer)
+    answer = _polish_source_language(answer)
+    answer = re.sub(r"\[S\d+\]", "", answer).strip()
 
     return GroundedAnswer(
         answer_id=str(uuid.uuid4()),
@@ -160,11 +234,31 @@ def direct_chat_answer(question: str, ui_language: str) -> GroundedAnswer | None
     )
 
 
-def is_greeting(question: str) -> bool:
-    cleaned = re.sub(r"[!?.\s,]+", " ", question.casefold()).strip()
-    if not cleaned:
-        return False
-    return cleaned in GREETING_TERMS
+def build_chat_plan(
+    *,
+    question: str,
+    ui_language: str,
+    chat_client: ChatClient,
+    session_history: Sequence[ChatMessage] = (),
+) -> ChatPlan:
+    language = _normalise_language(ui_language)
+    messages = _build_chat_plan_prompt(
+        question=question,
+        language=language,
+        session_history=session_history,
+    )
+    model_text = chat_client.complete(messages)
+    parsed = _parse_model_answer(model_text)
+
+    mode = str(parsed.get("mode") or "").strip().casefold()
+    if mode not in {"general_chat", "rag"}:
+        mode = "general_chat" if is_general_chat_question(question) else "rag"
+
+    retrieval_query = str(parsed.get("retrieval_query") or question).strip()
+    if not retrieval_query:
+        retrieval_query = question.strip()
+
+    return ChatPlan(mode=mode, retrieval_query=retrieval_query)
 
 
 def _boundary_answer(question: str, language: str) -> GroundedAnswer | None:
@@ -206,6 +300,26 @@ def _boundary_answer(question: str, language: str) -> GroundedAnswer | None:
             answer=answer,
             refused=True,
             disclaimer=disclaimer,
+            citations=[],
+            data_currency=DataCurrency(collected_at=None, official_last_updated_at=None),
+        )
+
+    if any(term in folded for term in LOCAL_RECOMMENDATION_TERMS):
+        if language == "no":
+            answer = (
+                "Jeg kan ikke anbefale barer, restauranter, butikker eller helgetilbud. "
+                "Spør heller om offentlige tjenester, regler eller praktisk informasjon for nykommere."
+            )
+        else:
+            answer = (
+                "I cannot recommend bars, restaurants, shops, or weekend offers. "
+                "Ask me about public services, rules, or practical newcomer information instead."
+            )
+        return GroundedAnswer(
+            answer_id=str(uuid.uuid4()),
+            answer=answer,
+            refused=True,
+            disclaimer=None,
             citations=[],
             data_currency=DataCurrency(collected_at=None, official_last_updated_at=None),
         )
@@ -302,6 +416,7 @@ def build_grounded_answer(
     answer = _expand_grouped_citations(raw_answer)
     answer = _keep_known_citation_markers(answer, source_map)
     answer = _clean_answer_formatting(answer)
+    answer = _polish_source_language(answer)
     answer = _remove_unrelated_route_details(question=question, answer=answer)
     answer = _add_missing_citations(answer, default_id="S1")
     if disclaimer:
@@ -414,7 +529,11 @@ def _build_prompt(
         "Do not decide eligibility, fill forms, or invent missing rules. "
         "For eligibility questions, do not start with a bare yes or no. Start by saying what the excerpts "
         "do and do not establish, then give the supported general steps. "
-        "Do not say 'sources you provided'; refer to them as stored official sources or excerpts. "
+        "Do not expose retrieval wording in the final answer. Do not start with phrases like "
+        "'The excerpts explain', 'These pages explain', 'These sources explain', 'The excerpts say', "
+        "'Utdragene her', or 'The stored sources'. "
+        "Write as a practical navigator, for example 'A D number...' or "
+        "'The official information does not say...'. "
         "For legal-risk questions, answer only the supported general information and tell the user to check "
         "the relevant agency or qualified adviser for their own case. "
         "For follow-up questions, use the session history only to understand what the user refers to; "
@@ -433,6 +552,7 @@ def _build_prompt(
         "even to explain that they are unrelated. "
         "Format answers for chat: use two to four short paragraphs, or a short bullet list for steps, "
         "documents, conditions, or alternatives. Put a blank line between paragraphs or bullet groups. "
+        "For Norwegian answers, use short sentences and avoid packing several conditions into one sentence. "
         "Avoid one dense paragraph. Do not use Markdown bold, tables, or headings. "
         "Every factual sentence about public rules, documents, dates, fees, services, or procedures "
         "must include a source marker like [S1]. "
@@ -445,6 +565,67 @@ def _build_prompt(
         f"Official source excerpts:\n{context}\n\n"
         f"{disclaimer_rule}\n"
         "Set refusal to true only when the excerpts do not support any useful answer to the question."
+    )
+    return [ChatMessage(role="system", content=system), ChatMessage(role="user", content=user)]
+
+
+def _build_general_chat_prompt(
+    *,
+    question: str,
+    language: str,
+    session_history: Sequence[ChatMessage],
+) -> list[ChatMessage]:
+    language_name = "Norwegian Bokmål" if language == "no" else "English"
+    history = _format_history(session_history)
+    system = (
+        "You are Oslo Newcomer RAG, a helpful assistant for immigrants, students, workers, and families "
+        "in Norway, especially Oslo. "
+        "This route is for normal conversation that does not need official sources, such as greetings, "
+        "thanks, how-you-are questions, and questions about what the assistant can do. "
+        "Answer naturally and briefly in the requested language. "
+        "Explain the assistant's scope at a high level: it can help users ask clearer questions about "
+        "moving to Oslo or Norway, and it can check stored official information for topics such as "
+        "permits, tax cards, ID numbers, work, housing, students, healthcare, NAV, UDI, Skatteetaten, "
+        "SUA, SiO, and Oslo municipality. "
+        "Do not include citations in this route. Do not give factual public-service rules, amounts, "
+        "deadlines, eligibility decisions, legal advice, or form-writing help here. "
+        "If the user asks for public-service facts, invite them to ask the concrete question so the app "
+        "can use its official-source retrieval route. "
+        "Return only JSON with keys: answer, refusal."
+    )
+    user = (
+        f"Answer language: {language_name}\n\n"
+        f"Question:\n{question.strip()}\n\n"
+        f"Recent chat, for tone only:\n{history}\n\n"
+        "Set refusal to false unless the user asks for legal advice, personal records, or drafting."
+    )
+    return [ChatMessage(role="system", content=system), ChatMessage(role="user", content=user)]
+
+
+def _build_chat_plan_prompt(
+    *,
+    question: str,
+    language: str,
+    session_history: Sequence[ChatMessage],
+) -> list[ChatMessage]:
+    language_name = "Norwegian Bokmål" if language == "no" else "English"
+    history = _format_history(session_history)
+    system = (
+        "You route messages for Oslo Newcomer RAG, a helpful assistant for immigrants, "
+        "students, workers, and families in Norway, especially Oslo. "
+        "Choose general_chat for normal conversation that does not need official sources: greetings, "
+        "thanks, 'how are you', what the assistant can do, and similar meta questions. "
+        "Choose rag when the user asks for public-service facts, rules, documents, deadlines, permits, "
+        "tax, housing, NAV, UDI, Skatteetaten, SUA, SiO, Oslo municipality, or any practical newcomer topic. "
+        "For rag, write one concise retrieval query in clear English. Correct spelling mistakes, translate "
+        "Norwegian terms, expand acronyms, and resolve follow-up pronouns from the recent chat. "
+        "Do not answer the user here. Return only JSON with keys: mode, retrieval_query."
+    )
+    user = (
+        f"Preferred answer language: {language_name}\n\n"
+        f"Current message:\n{question.strip()}\n\n"
+        f"Recent chat:\n{history}\n\n"
+        "Use mode general_chat or rag. If mode is general_chat, keep retrieval_query empty."
     )
     return [ChatMessage(role="system", content=system), ChatMessage(role="user", content=user)]
 
@@ -601,6 +782,126 @@ def _clean_answer_formatting(answer: str) -> str:
     return cleaned.strip()
 
 
+def _polish_source_language(answer: str) -> str:
+    replacements = (
+        (r"\b[Tt]hese pages explain that\b", "Official information says that"),
+        (r"\b[Tt]hese pages explain\b", "Official information explains"),
+        (r"\b[Tt]hese pages say that\b", "The official information says that"),
+        (r"\b[Tt]hese pages say\b", "The official information says"),
+        (r"\b[Tt]hese pages cover\b", "Official information covers"),
+        (r"\b[Tt]hese pages do not explain\b", "The official information does not explain"),
+        (r"\b[Tt]hese pages do not say\b", "The official information does not say"),
+        (r"\b[Tt]hese pages do not list\b", "The official information does not list"),
+        (r"\b[Tt]hese sources explain that\b", "Official information says that"),
+        (r"\b[Tt]hese sources explain\b", "Official information explains"),
+        (r"\b[Tt]hese sources say that\b", "The official information says that"),
+        (r"\b[Tt]hese sources say\b", "The official information says"),
+        (r"\b[Tt]hese sources cover\b", "Official information covers"),
+        (r"\b[Tt]hese sources do not explain\b", "The official information does not explain"),
+        (r"\b[Tt]hese sources do not say\b", "The official information does not say"),
+        (r"\b[Tt]hese sources do not list\b", "The official information does not list"),
+        (r"\b[Tt]hese official notes explain that\b", "Official information says that"),
+        (r"\b[Tt]hese official notes explain\b", "Official information explains"),
+        (r"\b[Tt]hese official notes\b", "The official information"),
+        (r"\b[Tt]hese official ([A-ZÆØÅ][A-Za-zÆØÅæøå .-]+) pages cover\b", r"The \1 pages cover"),
+        (r"\b[Tt]hese official ([A-ZÆØÅ][A-Za-zÆØÅæøå .-]+) pages\b", r"The \1 pages"),
+        (r"\b[Tt]hese official pages explain that\b", "Official information says that"),
+        (r"\b[Tt]hese official pages explain\b", "Official information explains"),
+        (r"\b[Tt]hese official pages\b", "The official information"),
+        (r"\b[Tt]hese notes explain that\b", "Official information says that"),
+        (r"\b[Tt]hese notes explain\b", "Official information explains"),
+        (r"\b[Tt]hese notes\b", "The official information"),
+        (r"\b[Tt]he excerpts explain that\b", "Official information says that"),
+        (r"\b[Tt]he excerpts explain\b", "Official information explains"),
+        (r"\b[Tt]he excerpts say that\b", "The official information says that"),
+        (r"\b[Tt]he excerpts say\b", "The official information says"),
+        (r"\b[Tt]he excerpt you provided\b", "The official information here"),
+        (r"\b[Tt]he excerpt\b", "The official information"),
+        (r"\b[Tt]he excerpts do not explain\b", "The official information does not explain"),
+        (r"\b[Tt]he excerpts do not say\b", "The official information does not say"),
+        (r"\b[Tt]he excerpts only say\b", "The official information only says"),
+        (r"\b[Tt]he excerpts do not list\b", "The official information does not list"),
+        (r"\b[Tt]he excerpts\b", "the official information"),
+        (r"\b[Tt]hey do not explain\b", "The official information does not explain"),
+        (r"\b[Tt]hey do not say\b", "The official information does not say"),
+        (r"\b[Tt]hey do not list\b", "The official information does not list"),
+        (r"\b[Tt]hey do not give\b", "The official information does not give"),
+        (r"\b[Tt]hose excerpts do not explain\b", "The official information does not explain"),
+        (r"\b[Tt]hose excerpts do not say\b", "The official information does not say"),
+        (r"\b[Tt]hose excerpts do not list\b", "The official information does not list"),
+        (r"\b[Tt]hose excerpts\b", "the official information"),
+        (r"\b[Tt]he information you provided\b", "The official information here"),
+        (r"\b[Tt]he provided information\b", "The official information here"),
+        (r"\b[Tt]he information here\b", "The official information here"),
+        (r"\b[Tt]he official info here\b", "The official information here"),
+        (r"\bprovided information\b", "official information"),
+        (r"\b[Tt]he information you have here\b", "The official information here"),
+        (r"\b[Tt]he official information you provided\b", "The official information here"),
+        (r"\b[Tt]he official information you shared\b", "The official information here"),
+        (r"\b[Tt]he official information provided here\b", "The official information here"),
+        (r"\b[Tt]he official UDI page you provided\b", "The UDI page"),
+        (r"\b[Tt]he official page you provided\b", "The official page"),
+        (r"\b[Tt]he official pages you shared\b", "The official information here"),
+        (r"\b[Tt]he pages you shared\b", "The official information here"),
+        (r"\b[Yy]our excerpt does not include\b", "The official information here does not include"),
+        (r"\b[Yy]our excerpt doesn't include\b", "The official information here does not include"),
+        (r"\b[Yy]our excerpts do not include\b", "The official information here does not include"),
+        (r"\b[Yy]our excerpts don't include\b", "The official information here does not include"),
+        (r"\bwhat is missing in The official information\b", "what the official information does and does not cover"),
+        (r"\bnot shown in The official information\b", "not shown in the official information"),
+        (r"\bin The official information\b", "in the official information"),
+        (r"\bwith The official information\b", "with the official information"),
+        (r"\babout The official information\b", "about the official information"),
+        (
+            r"\b([Tt]he official information(?: here| from [A-ZÆØÅA-Za-z .-]+)?) do not\b",
+            r"\1 does not",
+        ),
+        (r"\b[Tt]he official information do not\b", "The official information does not"),
+        (r"\bthe official information do not\b", "the official information does not"),
+        (r"\b[Tt]he official information here do not\b", "The official information here does not"),
+        (r"\bthe official information here do not\b", "the official information here does not"),
+        (r"\b[Tt]he official information also mention\b", "The official information also mentions"),
+        (r"\bthe official information also mention\b", "the official information also mentions"),
+        (r"\b[Tt]he official information here also include\b", "The official information here also includes"),
+        (r"\bthe official information here also include\b", "the official information here also includes"),
+        (r"\bbut The official information\b", "but the official information"),
+        (r"\bbecause The official information\b", "because the official information"),
+        (r"\bfrom The official information\b", "from the official information"),
+        (r", The official information\b", ", the official information"),
+        (r"([\):;],?) The official information\b", r"\1 the official information"),
+        (r"\b[Uu]tdragene her\b", "Den offisielle informasjonen her"),
+        (r"\b[Uu]tdragene jeg har her\b", "Den offisielle informasjonen her"),
+        (r"\b[Uu]tdragene du har her\b", "Den offisielle informasjonen her"),
+        (r"\b[Uu]tdraget du har her\b", "Den offisielle informasjonen her"),
+        (r"\b[Uu]tdraget jeg har her\b", "Den offisielle informasjonen her"),
+        (r"\b[Dd]e offisielle utdragene\b", "Den offisielle informasjonen"),
+        (r"\b[Dd]et offisielle utdraget\b", "Den offisielle informasjonen"),
+        (r"\bbasert på det som står i utdragene\b", "basert på den offisielle informasjonen"),
+        (r"\bi utdragene\b", "i den offisielle informasjonen"),
+        (r"\b[Uu]tdragene\b", "den offisielle informasjonen"),
+        (r"\b[Uu]tdraget\b", "den offisielle informasjonen"),
+        (r"\butdragene\b", "den offisielle informasjonen"),
+        (r"\butdraget\b", "den offisielle informasjonen"),
+        (r"\b[Dd]e offisielle Den offisielle informasjonen\b", "Den offisielle informasjonen"),
+        (r"\b[Dd]ette den offisielle informasjonen\b", "den offisielle informasjonen"),
+        (r"\bi disse den offisielle informasjonen\b", "i den offisielle informasjonen"),
+        (
+            r"Hvis du sier hvilken type tillatelse du mener \(for eksempel studier\), "
+            r"kan jeg prøve å finne det som faktisk står i den offisielle informasjonen "
+            r"for akkurat den ruten\. ?",
+            "",
+        ),
+        (r", men den gir ikke\b", ". Den gir ikke"),
+        (r", siden dette ikke er oppgitt\b", ". Dette er ikke oppgitt"),
+        (r", fordi dette ikke er oppgitt\b", ". Dette er ikke oppgitt"),
+        (r", siden den offisielle informasjonen\b", ". Den offisielle informasjonen"),
+    )
+    polished = answer
+    for pattern, replacement in replacements:
+        polished = re.sub(pattern, replacement, polished)
+    return polished.strip()
+
+
 def _remove_unrelated_route_details(*, question: str, answer: str) -> str:
     folded_question = question.casefold()
     folded_answer = answer.casefold()
@@ -621,6 +922,10 @@ def _remove_unrelated_route_details(*, question: str, answer: str) -> str:
         "work immigration",
         "27 116",
         "325 400",
+        "norsk bankkonto",
+        "dine egne",
+        "norwegian bank account",
+        "your own",
     )
     paragraphs = [paragraph.strip() for paragraph in answer.split("\n\n") if paragraph.strip()]
     kept = [

@@ -1,3 +1,5 @@
+import json
+
 from fastapi.testclient import TestClient
 
 from oslo_newcomer_rag.config import Settings
@@ -86,8 +88,36 @@ def test_chat_endpoint_requires_configured_database() -> None:
     assert response.json()["detail"] == "DATABASE_URL is not configured"
 
 
-def test_chat_endpoint_answers_greeting_without_database() -> None:
-    app = create_app(Settings(app_env="test"))
+def test_chat_endpoint_answers_greeting_without_database(monkeypatch) -> None:
+    class FakeChatClient:
+        def __init__(self, settings: Settings) -> None:
+            self.settings = settings
+
+        def complete(self, messages) -> str:
+            if "Return only JSON with keys: mode, retrieval_query" in messages[0].content:
+                return json.dumps({"mode": "general_chat", "retrieval_query": ""})
+            return json.dumps(
+                {
+                    "answer": (
+                        "Hei! Jeg kan hjelpe med enkle spørsmål og bruke offisielle kilder "
+                        "når du spør konkret om å flytte til Oslo."
+                    ),
+                    "refusal": False,
+                }
+            )
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr("oslo_newcomer_rag.main.OpenAICompatibleChatClient", FakeChatClient)
+    app = create_app(
+        Settings(
+            app_env="test",
+            llm_base_url="https://provider.example/v1",
+            llm_api_key="test-key",
+            llm_model="test-chat",
+        )
+    )
     client = TestClient(app)
 
     response = client.post("/api/chat", json={"question": "hei", "ui_language": "no"})
@@ -96,4 +126,37 @@ def test_chat_endpoint_answers_greeting_without_database() -> None:
     body = response.json()
     assert body["refused"] is False
     assert body["citations"] == []
-    assert "skattekort" in body["answer"]
+    assert "offisielle kilder" in body["answer"]
+
+
+def test_chat_endpoint_answers_simple_chat_without_database(monkeypatch) -> None:
+    class FakeChatClient:
+        def __init__(self, settings: Settings) -> None:
+            self.settings = settings
+
+        def complete(self, messages) -> str:
+            if "Return only JSON with keys: mode, retrieval_query" in messages[0].content:
+                return json.dumps({"mode": "general_chat", "retrieval_query": ""})
+            return json.dumps({"answer": "I am ready to help with Oslo newcomer questions.", "refusal": False})
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr("oslo_newcomer_rag.main.OpenAICompatibleChatClient", FakeChatClient)
+    app = create_app(
+        Settings(
+            app_env="test",
+            llm_base_url="https://provider.example/v1",
+            llm_api_key="test-key",
+            llm_model="test-chat",
+        )
+    )
+    client = TestClient(app)
+
+    response = client.post("/api/chat", json={"question": "How are you?", "ui_language": "en"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["refused"] is False
+    assert body["citations"] == []
+    assert "ready to help" in body["answer"]
