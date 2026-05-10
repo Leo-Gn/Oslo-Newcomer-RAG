@@ -143,7 +143,7 @@ def test_chat_plan_can_route_casual_questions_without_sources() -> None:
 
 def test_personal_record_request_is_refused_directly() -> None:
     answer = direct_chat_answer(
-        "My personal ID number is 120590 12345. Can you check my tax records?",
+        "My personal ID number is hidden here. Can you check my tax records?",
         "en",
     )
 

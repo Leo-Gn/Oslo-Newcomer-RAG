@@ -20,6 +20,25 @@ def test_healthz_reports_running_app() -> None:
     assert body["database"] == {"status": "not_configured", "checked": False}
 
 
+def test_production_app_does_not_expose_openapi_docs() -> None:
+    app = create_app(
+        Settings(
+            app_env="production",
+            database_url="postgresql+psycopg://user:pass@localhost:5432/oslo_newcomer",
+            llm_base_url="https://provider.example/v1",
+            llm_api_key="test-key",
+            llm_model="test-chat",
+            embedding_model="test-embedding",
+            embedding_dim=1536,
+        )
+    )
+    client = TestClient(app)
+
+    assert client.get("/docs").status_code == 404
+    assert client.get("/redoc").status_code == 404
+    assert client.get("/openapi.json").status_code == 404
+
+
 def test_healthz_reports_unreachable_database(monkeypatch) -> None:
     def fail_check(settings: Settings) -> bool:
         raise OSError("database unavailable")
