@@ -23,12 +23,12 @@ The goal is not to replace UDI, NAV, Skatteetaten, Oslo kommune, SUA, or SiO. I 
 <table>
   <tr>
     <td width="50%" align="center">
-      <img src="assets/legal-question-refusal.png" alt="Refusal answer for a personal legal question" width="100%">
+      <img src="assets/legal-question-refusal.png" alt="Refusal answer for a personal legal question" width="360">
       <br>
       <sub>Refusal to fill out an immigration application.</sub>
     </td>
     <td width="50%" align="center">
-      <img src="assets/norwegian-example.png" alt="Norwegian question answered with citations" width="100%">
+      <img src="assets/norwegian-example.png" alt="Norwegian question answered with citations" width="360">
       <br>
       <sub>Norwegian tax card answer with cited sources.</sub>
     </td>
