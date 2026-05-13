@@ -28,6 +28,13 @@ COPY --from=frontend-build /app/frontend/dist ./frontend/dist
 
 RUN uv sync --frozen --no-dev
 
+RUN useradd --create-home --shell /usr/sbin/nologin appuser \
+    && chown -R appuser:appuser /app
+
+ENV PATH="/app/.venv/bin:$PATH"
+
+USER appuser
+
 EXPOSE 8000
 
-CMD ["uv", "run", "--no-dev", "uvicorn", "oslo_newcomer_rag.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "oslo_newcomer_rag.main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -35,6 +35,32 @@ def test_production_settings_accept_required_values() -> None:
     assert settings.has_database_config is True
 
 
+def test_production_llm_base_url_must_use_https() -> None:
+    with pytest.raises(ValidationError) as exc_info:
+        Settings(
+            app_env="production",
+            database_url="postgresql+psycopg://user:pass@localhost:5432/oslo_newcomer",
+            llm_base_url="http://provider.example/v1",
+            llm_api_key="test-key",
+            llm_model="chat-model",
+            embedding_model="embedding-model",
+            embedding_dim=1536,
+        )
+
+    assert "LLM_BASE_URL must use https in production" in str(exc_info.value)
+
+
+def test_llm_base_url_must_not_contain_credentials() -> None:
+    with pytest.raises(ValidationError) as exc_info:
+        Settings(
+            llm_base_url="https://user:pass@provider.example/v1",
+            llm_api_key="test-key",
+            llm_model="chat-model",
+        )
+
+    assert "LLM_BASE_URL must not contain credentials" in str(exc_info.value)
+
+
 def test_app_settings_load_local_env_file(tmp_path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
     tmp_path.joinpath(".env").write_text(

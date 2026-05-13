@@ -84,3 +84,34 @@ def test_long_sections_are_split_with_same_source_url_and_heading() -> None:
 
 def test_invalid_numeric_last_updated_dates_are_ignored() -> None:
     assert _parse_date_value("31-13-2026") is None
+
+
+def test_external_canonical_url_falls_back_to_fetched_url() -> None:
+    parsed = parse_official_page(
+        FetchedPage(
+            url="https://www.udi.no/en/want-to-apply/work-immigration/",
+            html="""
+            <html>
+              <head><link rel="canonical" href="https://example.com/mirror" /></head>
+              <body><main><h1 id="main">Work</h1><p>Use the official UDI route before applying today.</p></main></body>
+            </html>
+            """,
+        ),
+        language="en",
+        allowed_hosts=frozenset({"udi.no", "www.udi.no"}),
+    )
+
+    assert parsed.canonical_url == "https://www.udi.no/en/want-to-apply/work-immigration/"
+    assert parsed.sections[0].url == "https://www.udi.no/en/want-to-apply/work-immigration/#main"
+
+
+def test_section_anchor_is_url_encoded() -> None:
+    parsed = parse_official_page(
+        FetchedPage(
+            url="https://www.udi.no/en/want-to-apply/work-immigration/",
+            html="<main><h1 id='work route'>Work</h1><p>Use the official UDI route before applying today.</p></main>",
+        ),
+        language="en",
+    )
+
+    assert parsed.sections[0].url.endswith("#work%20route")

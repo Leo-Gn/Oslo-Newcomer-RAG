@@ -39,6 +39,55 @@ def test_production_app_does_not_expose_openapi_docs() -> None:
     assert client.get("/openapi.json").status_code == 404
 
 
+def test_production_responses_include_browser_security_headers(monkeypatch) -> None:
+    monkeypatch.setattr("oslo_newcomer_rag.main.check_database", lambda settings: True)
+    app = create_app(
+        Settings(
+            app_env="production",
+            database_url="postgresql+psycopg://user:pass@localhost:5432/oslo_newcomer",
+            llm_base_url="https://provider.example/v1",
+            llm_api_key="test-key",
+            llm_model="test-chat",
+            embedding_model="test-embedding",
+            embedding_dim=1536,
+        )
+    )
+    client = TestClient(app)
+
+    response = client.get("/healthz")
+
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["x-frame-options"] == "DENY"
+    assert response.headers["content-security-policy"].startswith("default-src 'self'")
+    assert response.headers["strict-transport-security"] == "max-age=31536000"
+
+
+def test_chat_endpoint_rejects_oversized_request_body() -> None:
+    app = create_app(Settings(app_env="test", request_body_limit_bytes=4096))
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/chat",
+        json={"question": "x" * 5000, "ui_language": "en"},
+    )
+
+    assert response.status_code == 413
+    assert response.json()["detail"] == "Request body is too large"
+
+
+def test_chat_endpoint_rate_limit_is_applied_before_model_calls() -> None:
+    app = create_app(Settings(app_env="test", chat_rate_limit_per_minute=1))
+    client = TestClient(app)
+
+    payload = {"question": "Can you check my tax records?", "ui_language": "en"}
+    assert client.post("/api/chat", json=payload).status_code == 200
+
+    response = client.post("/api/chat", json=payload)
+
+    assert response.status_code == 429
+    assert response.headers["retry-after"] == "60"
+
+
 def test_healthz_reports_unreachable_database(monkeypatch) -> None:
     def fail_check(settings: Settings) -> bool:
         raise OSError("database unavailable")

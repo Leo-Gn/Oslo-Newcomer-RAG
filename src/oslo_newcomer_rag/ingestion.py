@@ -8,7 +8,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
-from urllib.parse import urljoin, urlparse
+from urllib.parse import quote, urljoin, urlparse, urlunparse
 
 import httpx
 from bs4 import BeautifulSoup, Tag
@@ -24,6 +24,8 @@ from oslo_newcomer_rag.sources import OFFICIAL_DOMAINS, SourceEntry, load_source
 DEFAULT_USER_AGENT = "OsloNewcomerRAG/0.1 static snapshot (+https://github.com/)"
 MAX_SECTION_WORDS = 450
 SECTION_OVERLAP_WORDS = 60
+MAX_REDIRECTS = 5
+MAX_SOURCE_BYTES = 2_000_000
 
 
 @dataclass(frozen=True)
@@ -89,15 +91,36 @@ def normalize_text(value: str) -> str:
 
 def fetch_source_page(source: SourceEntry, timeout: float = 25.0) -> FetchedPage:
     headers = {"User-Agent": DEFAULT_USER_AGENT, "Accept": "text/html,application/xhtml+xml"}
-    with httpx.Client(follow_redirects=True, timeout=timeout, headers=headers) as client:
-        response = client.get(source.url)
+    allowed_hosts = OFFICIAL_DOMAINS[source.owner]
+    current_url = source.url
+    with httpx.Client(follow_redirects=False, timeout=timeout, headers=headers) as client:
+        for redirect_count in range(MAX_REDIRECTS + 1):
+            _validate_official_https_url(current_url, allowed_hosts, source.id)
+            response = client.get(current_url)
+            if not response.is_redirect:
+                break
+            if redirect_count == MAX_REDIRECTS:
+                raise SnapshotFetchError(f"{source.id} redirected too many times")
+            location = response.headers.get("location")
+            if not location:
+                raise SnapshotFetchError(f"{source.id} returned a redirect without a location")
+            current_url = urljoin(str(response.url), location)
+        else:
+            raise SnapshotFetchError(f"{source.id} redirected too many times")
+
         response.raise_for_status()
 
     final_url = str(response.url)
-    final_host = (urlparse(final_url).hostname or "").lower()
-    if final_host not in OFFICIAL_DOMAINS[source.owner]:
-        raise SnapshotFetchError(f"{source.id} redirected to a non-allowlisted domain: {final_host}")
-
+    _validate_official_https_url(final_url, allowed_hosts, source.id)
+    content_length = response.headers.get("content-length")
+    if content_length:
+        try:
+            if int(content_length) > MAX_SOURCE_BYTES:
+                raise SnapshotFetchError(f"{source.id} response was larger than the snapshot limit")
+        except ValueError:
+            raise SnapshotFetchError(f"{source.id} returned an invalid content-length header") from None
+    if len(response.content) > MAX_SOURCE_BYTES:
+        raise SnapshotFetchError(f"{source.id} response was larger than the snapshot limit")
     return FetchedPage(
         url=final_url,
         html=response.text,
@@ -105,12 +128,17 @@ def fetch_source_page(source: SourceEntry, timeout: float = 25.0) -> FetchedPage
     )
 
 
-def parse_official_page(fetched: FetchedPage, language: str) -> ParsedPage:
+def parse_official_page(
+    fetched: FetchedPage,
+    language: str,
+    allowed_hosts: frozenset[str] | None = None,
+) -> ParsedPage:
     soup = BeautifulSoup(fetched.html, "html.parser")
     for unwanted in soup(["script", "style", "noscript", "svg", "iframe"]):
         unwanted.decompose()
 
-    canonical_url = _canonical_url(soup, fetched.url)
+    host_allowlist = allowed_hosts or _hosts_from_url(fetched.url)
+    canonical_url = _canonical_url(soup, fetched.url, host_allowlist)
     official_last_updated_at = _detect_last_updated(soup, fetched.last_modified_header)
     title = _title(soup)
     content_root = soup.find("main") or soup.body or soup
@@ -168,7 +196,7 @@ def ingest_registry(
     for entry in entries:
         source = _upsert_source(session, entry)
         fetched = fetcher(entry)
-        parsed = parse_official_page(fetched, entry.language)
+        parsed = parse_official_page(fetched, entry.language, allowed_hosts=OFFICIAL_DOMAINS[entry.owner])
         fetched_count += 1
         if not parsed.sections:
             results.append(
@@ -313,13 +341,13 @@ def _upsert_source(session: Session, entry: SourceEntry) -> Source:
     return source
 
 
-def _canonical_url(soup: BeautifulSoup, fetched_url: str) -> str:
+def _canonical_url(soup: BeautifulSoup, fetched_url: str, allowed_hosts: frozenset[str]) -> str:
     canonical = soup.find("link", rel=lambda value: value and "canonical" in value)
     if isinstance(canonical, Tag):
         href = canonical.get("href")
         if isinstance(href, str) and href.strip():
-            return urljoin(fetched_url, href.strip())
-    return fetched_url
+            return _safe_official_url(href.strip(), fetched_url, allowed_hosts)
+    return _safe_official_url(fetched_url, fetched_url, allowed_hosts)
 
 
 def _title(soup: BeautifulSoup) -> str | None:
@@ -386,8 +414,43 @@ def _section_url(canonical_url: str, heading: Tag) -> str:
             anchor = anchor_tag.get("id") or anchor_tag.get("name")
 
     if isinstance(anchor, str) and anchor.strip():
-        return f"{canonical_url}#{anchor.strip()}"
+        return f"{canonical_url}#{quote(anchor.strip(), safe='-._~')}"
     return canonical_url
+
+
+def _safe_official_url(candidate_url: str, fetched_url: str, allowed_hosts: frozenset[str]) -> str:
+    fallback = _strip_url_noise(fetched_url)
+    joined = urljoin(fetched_url, candidate_url)
+    try:
+        _validate_official_https_url(joined, allowed_hosts, "canonical")
+    except SnapshotFetchError:
+        return fallback
+    return _strip_url_noise(joined)
+
+
+def _strip_url_noise(value: str) -> str:
+    parsed = urlparse(value)
+    return urlunparse(parsed._replace(params="", query="", fragment=""))
+
+
+def _validate_official_https_url(url: str, allowed_hosts: frozenset[str], source_id: str) -> None:
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower()
+    if parsed.scheme != "https" or host not in allowed_hosts:
+        raise SnapshotFetchError(f"{source_id} uses a non-allowlisted URL: {url}")
+    if parsed.username or parsed.password:
+        raise SnapshotFetchError(f"{source_id} URL must not contain credentials")
+    try:
+        has_port = parsed.port is not None
+    except ValueError as exc:
+        raise SnapshotFetchError(f"{source_id} URL has an invalid port") from exc
+    if has_port:
+        raise SnapshotFetchError(f"{source_id} URL must not contain an explicit port")
+
+
+def _hosts_from_url(url: str) -> frozenset[str]:
+    host = (urlparse(url).hostname or "").lower()
+    return frozenset({host}) if host else frozenset()
 
 
 def _is_inside_ignored_region(element: Tag) -> bool:

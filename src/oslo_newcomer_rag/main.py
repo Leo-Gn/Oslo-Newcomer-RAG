@@ -1,3 +1,6 @@
+import time
+from collections import defaultdict, deque
+from collections.abc import Callable
 from datetime import datetime
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
@@ -5,7 +8,8 @@ from typing import Literal
 from uuid import UUID
 
 import httpx
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, Request, Response, status
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, select
@@ -31,6 +35,14 @@ from oslo_newcomer_rag.retrieval import (
     OpenAICompatibleEmbeddingClient,
 )
 from oslo_newcomer_rag.sources import load_source_registry
+
+
+RATE_LIMITED_PATHS = {
+    "/api/chat": "chat_rate_limit_per_minute",
+    "/api/feedback": "feedback_rate_limit_per_minute",
+}
+RATE_LIMIT_WINDOW_SECONDS = 60.0
+MAX_RATE_LIMIT_BUCKETS = 10_000
 
 
 class ComponentHealth(BaseModel):
@@ -112,6 +124,38 @@ class FeedbackResponse(BaseModel):
     cleared: bool = False
 
 
+class RateLimiter:
+    def __init__(
+        self,
+        *,
+        window_seconds: float = RATE_LIMIT_WINDOW_SECONDS,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self.window_seconds = window_seconds
+        self.clock = clock
+        self._hits: dict[str, deque[float]] = defaultdict(deque)
+
+    def allow(self, key: str, *, limit: int) -> bool:
+        now = self.clock()
+        cutoff = now - self.window_seconds
+        if len(self._hits) > MAX_RATE_LIMIT_BUCKETS:
+            self._prune(cutoff)
+        if len(self._hits) > MAX_RATE_LIMIT_BUCKETS and key not in self._hits:
+            return False
+        hits = self._hits[key]
+        while hits and hits[0] <= cutoff:
+            hits.popleft()
+        if len(hits) >= limit:
+            return False
+        hits.append(now)
+        return True
+
+    def _prune(self, cutoff: float) -> None:
+        stale_keys = [key for key, hits in self._hits.items() if not hits or hits[-1] <= cutoff]
+        for key in stale_keys:
+            self._hits.pop(key, None)
+
+
 def package_version() -> str:
     try:
         return version("oslo-newcomer-rag")
@@ -129,6 +173,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         openapi_url=None if app_settings.app_env == "production" else "/openapi.json",
     )
     api.state.settings = app_settings
+    api.state.rate_limiter = RateLimiter()
+
+    @api.middleware("http")
+    async def security_middleware(request: Request, call_next) -> Response:
+        checked_request, early_response = await _preflight_security_response(
+            request,
+            app_settings,
+            api.state.rate_limiter,
+        )
+        if early_response:
+            _set_security_headers(early_response, app_settings)
+            return early_response
+
+        response = await call_next(checked_request)
+        _set_security_headers(response, app_settings)
+        return response
 
     @api.get("/healthz", response_model=HealthResponse, tags=["health"])
     async def healthz() -> HealthResponse:
@@ -382,3 +442,87 @@ def _chat_data_currency(data_currency: DataCurrency) -> ChatDataCurrency:
         collected_at=data_currency.collected_at,
         official_last_updated_at=data_currency.official_last_updated_at,
     )
+
+
+async def _preflight_security_response(
+    request: Request,
+    settings: Settings,
+    rate_limiter: RateLimiter,
+) -> tuple[Request, JSONResponse | None]:
+    if request.method not in {"POST", "PUT", "PATCH"}:
+        return request, None
+
+    body = await _read_limited_body(request, settings.request_body_limit_bytes)
+    if body is None:
+        return request, JSONResponse(
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            content={"detail": "Request body is too large"},
+        )
+    request._body = body
+
+    limit_name = RATE_LIMITED_PATHS.get(request.url.path)
+    if not limit_name or not settings.rate_limit_enabled:
+        return request, None
+
+    limit = int(getattr(settings, limit_name))
+    client_key = _client_rate_limit_key(request)
+    if rate_limiter.allow(f"{request.url.path}:{client_key}", limit=limit):
+        return request, None
+
+    return request, JSONResponse(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        content={"detail": "Too many requests. Please wait a little before trying again."},
+        headers={"Retry-After": str(int(RATE_LIMIT_WINDOW_SECONDS))},
+    )
+
+
+async def _read_limited_body(request: Request, limit: int) -> bytes | None:
+    raw_length = request.headers.get("content-length")
+    if raw_length is not None:
+        try:
+            if int(raw_length) > limit:
+                return None
+        except ValueError:
+            return None
+
+    body = bytearray()
+    async for chunk in request.stream():
+        body.extend(chunk)
+        if len(body) > limit:
+            return None
+    return bytes(body)
+
+
+def _client_rate_limit_key(request: Request) -> str:
+    if request.client and request.client.host:
+        return request.client.host
+    return "unknown"
+
+
+def _set_security_headers(response: Response, settings: Settings) -> None:
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault(
+        "Permissions-Policy",
+        "camera=(), microphone=(), geolocation=(), payment=()",
+    )
+    response.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
+
+    if settings.app_env == "production":
+        response.headers.setdefault(
+            "Content-Security-Policy",
+            (
+                "default-src 'self'; "
+                "base-uri 'self'; "
+                "connect-src 'self'; "
+                "font-src 'self'; "
+                "form-action 'self'; "
+                "frame-ancestors 'none'; "
+                "img-src 'self' data:; "
+                "object-src 'none'; "
+                "script-src 'self'; "
+                "style-src 'self'"
+            ),
+        )
+        response.headers.setdefault("Strict-Transport-Security", "max-age=31536000")

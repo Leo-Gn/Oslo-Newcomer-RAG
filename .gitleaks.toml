@@ -1,0 +1,12 @@
+title = "Oslo Newcomer RAG"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Generated dependency and build directories"
+paths = [
+  '''^\.venv/''',
+  '''^node_modules/''',
+  '''^frontend/node_modules/''',
+]
