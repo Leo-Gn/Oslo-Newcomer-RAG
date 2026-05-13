@@ -1,10 +1,12 @@
 from datetime import datetime
 from importlib.metadata import PackageNotFoundError, version
+from pathlib import Path
 from typing import Literal
 from uuid import UUID
 
 import httpx
 from fastapi import FastAPI, HTTPException, status
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
@@ -316,7 +318,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         return FeedbackResponse(feedback_id=row.id, created_at=row.created_at)
 
+    mount_frontend(api)
     return api
+
+
+def mount_frontend(api: FastAPI) -> None:
+    frontend_dist = Path(__file__).resolve().parents[2] / "frontend" / "dist"
+    if (frontend_dist / "index.html").exists():
+        api.mount("/", StaticFiles(directory=frontend_dist, html=True), name="frontend")
 
 
 app = create_app()

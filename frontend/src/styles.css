@@ -291,6 +291,7 @@ button {
   position: relative;
   display: flex;
   width: min(1040px, 100%);
+  max-width: 1040px;
   min-height: 0;
   flex: 1 1 auto;
   flex-direction: column;
@@ -1338,22 +1339,24 @@ button {
   }
 
   .topbar {
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: 1fr;
     align-items: center;
     width: 100%;
     margin: 0;
-    padding: 14px 16px;
+    gap: 12px;
+    padding: 14px 16px 16px;
   }
 
   .brand-block {
     grid-column: 1;
-    text-align: left;
+    text-align: center;
   }
 
   .topbar-actions {
-    grid-column: 2;
+    grid-column: 1;
     width: auto;
-    justify-content: flex-end;
+    justify-content: center;
+    justify-self: center;
   }
 
   .workspace {
@@ -1390,6 +1393,11 @@ button {
 
   .empty-state {
     padding: 0 18px;
+  }
+
+  .start-screen .empty-state {
+    flex-direction: column;
+    gap: 8px;
   }
 
   .composer {
