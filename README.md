@@ -17,7 +17,7 @@ The goal is not to replace UDI, NAV, Skatteetaten, Oslo kommune, SUA, or SiO. I 
 <p align="center">
   <img src="assets/dark-mode-toggle.gif" alt="Dark mode toggle changing the chat interface" width="560">
   <br>
-  <sub>Theme toggle on a cautious student-permit work question.</sub>
+  <sub>Theme toggle on a student-permit work question.</sub>
 </p>
 
 <table>
