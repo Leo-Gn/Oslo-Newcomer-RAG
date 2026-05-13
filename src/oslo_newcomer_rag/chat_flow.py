@@ -5,7 +5,12 @@ from collections.abc import Sequence
 
 from sqlalchemy.orm import Session
 
-from oslo_newcomer_rag.generation import ChatMessage, direct_chat_answer, is_general_chat_question
+from oslo_newcomer_rag.generation import (
+    ChatMessage,
+    GroundedAnswer,
+    direct_chat_answer,
+    is_general_chat_question,
+)
 from oslo_newcomer_rag.retrieval import (
     OpenAICompatibleEmbeddingClient,
     RetrievalResult,
@@ -261,7 +266,7 @@ TOPIC_QUERY_HINTS = (
 )
 
 
-def build_boundary_answer(question: str, ui_language: str):
+def build_boundary_answer(question: str, ui_language: str) -> GroundedAnswer | None:
     return direct_chat_answer(question, infer_answer_language(question, ui_language))
 
 

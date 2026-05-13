@@ -79,7 +79,7 @@ def test_embedding_client_retries_rate_limited_requests() -> None:
         sleep=sleeps.append,
     )
 
-    vector = client.embed_texts(["renew a residence card"], task="RETRIEVAL_DOCUMENT")[0]
+    vector = client.embed_texts(["renew a residence card"])[0]
 
     assert calls == 2
     assert sleeps == [0.25]

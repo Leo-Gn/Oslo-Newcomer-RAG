@@ -174,7 +174,7 @@ class OpenAICompatibleEmbeddingClient:
         if self._owned_client:
             self.client.close()
 
-    def embed_texts(self, texts: Sequence[str], *, task: str) -> list[list[float]]:
+    def embed_texts(self, texts: Sequence[str]) -> list[list[float]]:
         if not texts:
             return []
 
@@ -198,7 +198,7 @@ class OpenAICompatibleEmbeddingClient:
         return [self._prepare_vector(vector) for vector in vectors]
 
     def embed_query(self, query: str) -> list[float]:
-        return self.embed_texts([query], task="RETRIEVAL_QUERY")[0]
+        return self.embed_texts([query])[0]
 
     def _post_with_retries(
         self,
@@ -277,7 +277,7 @@ def build_missing_embeddings(
             break
 
         scanned += len(chunks)
-        vectors = embedder.embed_texts([chunk.text for chunk in chunks], task="RETRIEVAL_DOCUMENT")
+        vectors = embedder.embed_texts([chunk.text for chunk in chunks])
         chunk_ids = [chunk.id for chunk in chunks]
         session.execute(delete(Embedding).where(Embedding.chunk_id.in_(chunk_ids)))
         session.flush()

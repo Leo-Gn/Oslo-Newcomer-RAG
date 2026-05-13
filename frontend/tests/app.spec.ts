@@ -1,5 +1,31 @@
 import { expect, test } from "@playwright/test";
 
+type CitationFixture = {
+  citation_id: string;
+  chunk_id: string;
+  source_owner: string;
+  source_url: string;
+  section_url: string;
+  section_heading: string;
+  collected_at: string;
+  official_last_updated_at: string | null;
+};
+
+type ChatFixture = {
+  answer_id: string;
+  answer: string;
+  refused: boolean;
+  disclaimer: string | null;
+  citations: CitationFixture[];
+  data_currency: {
+    collected_at: string | null;
+    official_last_updated_at: string | null;
+  };
+};
+
+const collectedAt = "2026-02-01T10:00:00Z";
+const updatedAt = "2026-01-20T09:00:00Z";
+
 const sourceSnapshot = {
   database_configured: true,
   total_sources: 6,
@@ -28,6 +54,37 @@ const sourceSnapshot = {
   ]
 };
 
+function citation(overrides: Partial<CitationFixture> = {}): CitationFixture {
+  return {
+    citation_id: "S1",
+    chunk_id: "chunk-1",
+    source_owner: "UDI",
+    source_url: "https://www.udi.no/en/",
+    section_url: "https://www.udi.no/en/#moving",
+    section_heading: "Moving to Norway",
+    collected_at: collectedAt,
+    official_last_updated_at: updatedAt,
+    ...overrides
+  };
+}
+
+function chatPayload(overrides: Partial<ChatFixture> = {}): ChatFixture {
+  const citations = overrides.citations ?? [citation()];
+
+  return {
+    answer_id: "answer-1",
+    answer: "Start with registration, tax, and the relevant Oslo services. [S1]",
+    refused: false,
+    disclaimer: null,
+    citations,
+    data_currency: {
+      collected_at: citations.length ? citations[0].collected_at : null,
+      official_last_updated_at: citations.length ? citations[0].official_last_updated_at : null
+    },
+    ...overrides
+  };
+}
+
 test.beforeEach(async ({ page }) => {
   await page.route("**/api/sources", async (route) => {
     await route.fulfill({ json: sourceSnapshot });
@@ -39,7 +96,7 @@ test.beforeEach(async ({ page }) => {
     const asksLegalQuestion = String(request.question).toLowerCase().includes("rejected");
 
     await route.fulfill({
-      json: {
+      json: chatPayload({
         answer_id: `answer-${Date.now()}`,
         answer: asksLegalQuestion
           ? "I do not have enough support in the stored official sources to answer safely."
@@ -51,34 +108,13 @@ test.beforeEach(async ({ page }) => {
           ? "This is general information from official sources, not legal advice."
           : null,
         citations: asksLegalQuestion
-            ? []
-            : [
-              {
-                citation_id: "S1",
-                chunk_id: "chunk-1",
-                source_owner: "UDI",
-                source_url: "https://www.udi.no/en/",
-                section_url: "https://www.udi.no/en/#moving",
-                section_heading: "Moving to Norway",
-                collected_at: "2026-02-01T10:00:00Z",
-                official_last_updated_at: "2026-01-20T09:00:00Z"
-              },
-              {
-                citation_id: "S2",
-                chunk_id: "chunk-2",
-                source_owner: "UDI",
-                source_url: "https://www.udi.no/en/",
-                section_url: "https://www.udi.no/en/#moving",
-                section_heading: "Moving to Norway",
-                collected_at: "2026-02-01T10:00:00Z",
-                official_last_updated_at: "2026-01-20T09:00:00Z"
-              }
-            ],
+          ? []
+          : [citation(), citation({ citation_id: "S2", chunk_id: "chunk-2" })],
         data_currency: {
-          collected_at: asksLegalQuestion ? null : "2026-02-01T10:00:00Z",
-          official_last_updated_at: asksLegalQuestion ? null : "2026-01-20T09:00:00Z"
+          collected_at: asksLegalQuestion ? null : collectedAt,
+          official_last_updated_at: asksLegalQuestion ? null : updatedAt
         }
-      }
+      })
     });
   });
 });
@@ -121,7 +157,7 @@ test("example prompts are reshuffled on reload", async ({ page }) => {
   expect(secondSet).not.toEqual(firstSet);
 });
 
-test("clearing a pending answer prevents stale messages from returning", async ({ page }) => {
+test("start over ignores an old pending answer", async ({ page }) => {
   let requestCount = 0;
 
   await page.route("**/api/chat", async (route) => {
@@ -131,28 +167,11 @@ test("clearing a pending answer prevents stale messages from returning", async (
 
     try {
       await route.fulfill({
-        json: {
+        json: chatPayload({
           answer_id: `answer-${currentRequest}`,
           answer: currentRequest === 1 ? "This stale answer should not appear. [S1]" : "Fresh answer only. [S1]",
-          refused: false,
-          disclaimer: null,
-          citations: [
-            {
-              citation_id: "S1",
-              chunk_id: `chunk-${currentRequest}`,
-              source_owner: "UDI",
-              source_url: "https://www.udi.no/en/",
-              section_url: "https://www.udi.no/en/#moving",
-              section_heading: "Moving to Norway",
-              collected_at: "2026-02-01T10:00:00Z",
-              official_last_updated_at: "2026-01-20T09:00:00Z"
-            }
-          ],
-          data_currency: {
-            collected_at: "2026-02-01T10:00:00Z",
-            official_last_updated_at: "2026-01-20T09:00:00Z"
-          }
-        }
+          citations: [citation({ chunk_id: `chunk-${currentRequest}` })]
+        })
       });
     } catch {
       // The UI can abort a pending request when the user starts over.
@@ -254,7 +273,7 @@ test("enter sends, shift enter keeps a new line", async ({ page }) => {
   await expect(page.getByText("Start with registration, tax, and the relevant Oslo services. [S1]")).toBeVisible();
 });
 
-test("composer grows for longer drafts before scrolling", async ({ page }) => {
+test("long drafts grow the composer before it scrolls", async ({ page }) => {
   await page.goto("/");
 
   const composer = page.getByPlaceholder("Type your question here...");
@@ -295,28 +314,10 @@ test("composer stays editable while an answer is pending", async ({ page }) => {
   await page.route("**/api/chat", async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 350));
     await route.fulfill({
-      json: {
+      json: chatPayload({
         answer_id: "slow-answer",
-        answer: "Use the official pages for the current procedure. [S1]",
-        refused: false,
-        disclaimer: null,
-        citations: [
-          {
-            citation_id: "S1",
-            chunk_id: "chunk-1",
-            source_owner: "UDI",
-            source_url: "https://www.udi.no/en/",
-            section_url: "https://www.udi.no/en/#moving",
-            section_heading: "Moving to Norway",
-            collected_at: "2026-02-01T10:00:00Z",
-            official_last_updated_at: "2026-01-20T09:00:00Z"
-          }
-        ],
-        data_currency: {
-          collected_at: "2026-02-01T10:00:00Z",
-          official_last_updated_at: "2026-01-20T09:00:00Z"
-        }
-      }
+        answer: "Use the official pages for the current procedure. [S1]"
+      })
     });
   });
 
@@ -345,28 +346,20 @@ test("language toggle sends Norwegian requests", async ({ page }) => {
     const request = route.request().postDataJSON();
     postedLanguage = request.ui_language;
     await route.fulfill({
-      json: {
+      json: chatPayload({
         answer_id: "answer-no",
         answer: "Du kan starte med offentlige kilder. [S1]",
-        refused: false,
-        disclaimer: null,
         citations: [
-          {
-            citation_id: "S1",
-            chunk_id: "chunk-1",
+          citation({
             source_owner: "Skatteetaten",
             source_url: "https://www.skatteetaten.no/en/",
             section_url: "https://www.skatteetaten.no/en/person/",
             section_heading: "Tax deduction card",
             collected_at: "2026-02-03T10:00:00Z",
             official_last_updated_at: "2026-01-31T09:00:00Z"
-          }
-        ],
-        data_currency: {
-          collected_at: "2026-02-03T10:00:00Z",
-          official_last_updated_at: "2026-01-31T09:00:00Z"
-        }
-      }
+          })
+        ]
+      })
     });
   });
 
@@ -387,28 +380,10 @@ test("switching language keeps earlier turn labels stable", async ({ page }) => 
     const request = route.request().postDataJSON();
     const isNorwegian = request.ui_language === "no";
     await route.fulfill({
-      json: {
+      json: chatPayload({
         answer_id: isNorwegian ? "answer-no" : "answer-en",
-        answer: isNorwegian ? "Dette svaret er på norsk. [S1]" : "This answer is in English. [S1]",
-        refused: false,
-        disclaimer: null,
-        citations: [
-          {
-            citation_id: "S1",
-            chunk_id: "chunk-1",
-            source_owner: "UDI",
-            source_url: "https://www.udi.no/en/",
-            section_url: "https://www.udi.no/en/#moving",
-            section_heading: "Moving to Norway",
-            collected_at: "2026-02-01T10:00:00Z",
-            official_last_updated_at: "2026-01-20T09:00:00Z"
-          }
-        ],
-        data_currency: {
-          collected_at: "2026-02-01T10:00:00Z",
-          official_last_updated_at: "2026-01-20T09:00:00Z"
-        }
-      }
+        answer: isNorwegian ? "Dette svaret er på norsk. [S1]" : "This answer is in English. [S1]"
+      })
     });
   });
 
@@ -436,28 +411,18 @@ test("follow-up questions send session history", async ({ page }) => {
     const request = route.request().postDataJSON();
     requests.push(request);
     await route.fulfill({
-      json: {
+      json: chatPayload({
         answer_id: `answer-${requests.length}`,
         answer: requests.length === 1 ? "Students can check SiO housing. [S1]" : "They can also check Oslo housing information. [S1]",
-        refused: false,
-        disclaimer: null,
         citations: [
-          {
-            citation_id: "S1",
-            chunk_id: "chunk-1",
+          citation({
             source_owner: "SiO",
             source_url: "https://sio.no/en/",
             section_url: "https://bolig.sio.no/en/",
-            section_heading: "Student housing",
-            collected_at: "2026-02-01T10:00:00Z",
-            official_last_updated_at: "2026-01-20T09:00:00Z"
-          }
-        ],
-        data_currency: {
-          collected_at: "2026-02-01T10:00:00Z",
-          official_last_updated_at: "2026-01-20T09:00:00Z"
-        }
-      }
+            section_heading: "Student housing"
+          })
+        ]
+      })
     });
   });
 
