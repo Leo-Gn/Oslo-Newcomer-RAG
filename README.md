@@ -8,21 +8,32 @@ The goal is not to replace UDI, NAV, Skatteetaten, Oslo kommune, SUA, or SiO. I 
 
 <p align="center">
   <img src="assets/light-mode-main.png" alt="Light mode chat interface with a cited answer" width="560">
+  <br>
+  <sub>Main chat view with citations under the answer.</sub>
 </p>
 
 ## Screenshots
 
 <p align="center">
   <img src="assets/dark-mode-toggle.gif" alt="Dark mode toggle changing the chat interface" width="560">
+  <br>
+  <sub>Theme switch between light and dark mode.</sub>
 </p>
 
-<p align="center">
-  <img src="assets/legal-question-refusal.png" alt="Refusal answer for a personal legal question" width="560">
-</p>
-
-<p align="center">
-  <img src="assets/norwegian-example.png" alt="Norwegian question answered with citations" width="560">
-</p>
+<table>
+  <tr>
+    <td width="50%" align="center">
+      <img src="assets/legal-question-refusal.png" alt="Refusal answer for a personal legal question" width="100%">
+      <br>
+      <sub>Refusal for personal legal judgement.</sub>
+    </td>
+    <td width="50%" align="center">
+      <img src="assets/norwegian-example.png" alt="Norwegian question answered with citations" width="100%">
+      <br>
+      <sub>Norwegian question with cited sources.</sub>
+    </td>
+  </tr>
+</table>
 
 ## Tech Stack
 
