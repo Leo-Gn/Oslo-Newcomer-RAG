@@ -4,7 +4,7 @@ I built this as a small portfolio project for newcomers who need a simpler, more
 
 The goal is not to replace UDI, NAV, Skatteetaten, Oslo kommune, SUA, or SiO. I wanted the demo to point users to the right official page, explain the answer in plain language, and show citations every time.
 
-**Live demo:** https://your-demo-url.example
+[**Live demo**](https://oslo-newcomer-rag-xqhde.ondigitalocean.app/)
 
 <p align="center">
   <img src="assets/light-mode-main.png" alt="Light mode chat interface with a cited answer" width="560">
