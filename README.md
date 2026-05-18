@@ -8,32 +8,27 @@ The goal is not to replace UDI, NAV, Skatteetaten, Oslo kommune, SUA, or SiO. I 
 
 ## Screenshots
 
-<table>
-  <tr>
-    <td width="50%" align="center">
-      <img src="assets/light-mode-main.png" alt="Light mode chat interface with a cited answer" width="360">
-      <br>
-      <sub>Tax deduction card answer with official-source citations.</sub>
-    </td>
-    <td width="50%" align="center">
-      <img src="assets/dark-mode-toggle.gif" alt="Dark mode toggle changing the chat interface" width="360">
-      <br>
-      <sub>Theme toggle on a student-permit work question.</sub>
-    </td>
-  </tr>
-  <tr>
-    <td width="50%" align="center">
-      <img src="assets/legal-question-refusal.png" alt="Refusal answer for a personal legal question" width="360">
-      <br>
-      <sub>Refusal to fill out an immigration application.</sub>
-    </td>
-    <td width="50%" align="center">
-      <img src="assets/norwegian-example.png" alt="Norwegian question answered with citations" width="360">
-      <br>
-      <sub>Norwegian tax card answer with cited sources.</sub>
-    </td>
-  </tr>
-</table>
+<div align="center">
+  <div>
+    <img src="assets/light-mode-main.png" alt="Light mode chat interface with a cited answer" width="360">
+    <img src="assets/dark-mode-toggle.gif" alt="Dark mode toggle changing the chat interface" width="360">
+  </div>
+  <div>
+    <sub>Tax deduction card answer with official-source citations.</sub>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+    <sub>Theme toggle on a student-permit work question.</sub>
+  </div>
+  <br>
+  <div>
+    <img src="assets/legal-question-refusal.png" alt="Refusal answer for a personal legal question" width="360">
+    <img src="assets/norwegian-example.png" alt="Norwegian question answered with citations" width="360">
+  </div>
+  <div>
+    <sub>Refusal to fill out an immigration application.</sub>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+    <sub>Norwegian tax card answer with cited sources.</sub>
+  </div>
+</div>
 
 ## Tech Stack
 
