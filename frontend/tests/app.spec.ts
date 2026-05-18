@@ -523,6 +523,95 @@ test("mobile layout keeps the chat controls reachable", async ({ page }) => {
 
   await expect(page.getByRole("heading", { name: "Oslo Newcomer RAG" })).toBeVisible();
   await expect(page.locator(".example-button")).toHaveCount(3);
+  await page.locator(".example-button").last().scrollIntoViewIfNeeded();
+  await expect(page.locator(".example-button").last()).toBeVisible();
   await expect(page.getByPlaceholder("Type your question here...")).toBeVisible();
   await expect(page.getByRole("button", { name: "Send" })).toBeVisible();
+});
+
+test("mobile messages keep questions visually separate from answers", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+
+  await page.locator(".example-button").first().click();
+  await expect(page.getByText("Start with registration, tax, and the relevant Oslo services. [S1]")).toBeVisible();
+
+  const layout = await page.evaluate(() => {
+    const clearButton = document.querySelector(".floating-clear-button")?.getBoundingClientRect();
+    const stage = document.querySelector(".message-stage")?.getBoundingClientRect();
+    const question = document.querySelector(".question-row")?.getBoundingClientRect();
+    const answer = document.querySelector(".answer-block")?.getBoundingClientRect();
+
+    if (!clearButton || !stage || !question || !answer) {
+      throw new Error("Expected both message blocks");
+    }
+
+    return {
+      answerLeft: answer.left,
+      answerWidth: answer.width,
+      clearBottom: clearButton.bottom,
+      questionLeft: question.left,
+      questionWidth: question.width,
+      stageTop: stage.top
+    };
+  });
+
+  expect(layout.questionWidth).toBeLessThan(layout.answerWidth);
+  expect(layout.questionLeft).toBeGreaterThan(layout.answerLeft);
+  expect(layout.clearBottom).toBeLessThanOrEqual(layout.stageTop + 1);
+});
+
+test("wide layouts keep a broad shell with capped inner content", async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.goto("/");
+
+  const startLayout = await page.evaluate(() => {
+    const surface = document.querySelector(".chat-surface")?.getBoundingClientRect();
+    const composer = document.querySelector(".start-screen .composer")?.getBoundingClientRect();
+
+    if (!surface || !composer) {
+      throw new Error("Expected the start layout");
+    }
+
+    return {
+      composerCenter: composer.left + composer.width / 2,
+      composerWidth: composer.width,
+      surfaceCenter: surface.left + surface.width / 2,
+      surfaceWidth: surface.width
+    };
+  });
+
+  expect(startLayout.surfaceWidth).toBeGreaterThan(1800);
+  expect(startLayout.composerWidth).toBeLessThanOrEqual(761);
+  expect(Math.abs(startLayout.surfaceCenter - startLayout.composerCenter)).toBeLessThan(2);
+
+  await page.locator(".example-button").first().click();
+  await expect(page.getByText("Start with registration, tax, and the relevant Oslo services. [S1]")).toBeVisible();
+
+  const activeLayout = await page.evaluate(() => {
+    const clearButton = document.querySelector(".floating-clear-button")?.getBoundingClientRect();
+    const surface = document.querySelector(".chat-surface")?.getBoundingClientRect();
+    const history = document.querySelector(".chat-history")?.getBoundingClientRect();
+    const composer = document.querySelector(".chat-body > .composer")?.getBoundingClientRect();
+
+    if (!surface || !history || !composer || !clearButton) {
+      throw new Error("Expected the active chat layout");
+    }
+
+    return {
+      clearRight: clearButton.right,
+      composerCenter: composer.left + composer.width / 2,
+      composerRight: composer.right,
+      composerWidth: composer.width,
+      historyCenter: history.left + history.width / 2,
+      historyWidth: history.width,
+      surfaceCenter: surface.left + surface.width / 2
+    };
+  });
+
+  expect(activeLayout.historyWidth).toBeLessThanOrEqual(977);
+  expect(activeLayout.composerWidth).toBeLessThanOrEqual(985);
+  expect(Math.abs(activeLayout.surfaceCenter - activeLayout.historyCenter)).toBeLessThan(2);
+  expect(Math.abs(activeLayout.surfaceCenter - activeLayout.composerCenter)).toBeLessThan(2);
+  expect(Math.abs(activeLayout.clearRight - activeLayout.composerRight)).toBeLessThan(8);
 });

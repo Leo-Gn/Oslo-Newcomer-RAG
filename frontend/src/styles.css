@@ -270,8 +270,7 @@ button {
 .chat-surface {
   position: relative;
   display: flex;
-  width: min(1040px, 100%);
-  max-width: 1040px;
+  width: 100%;
   min-height: 0;
   flex: 1 1 auto;
   flex-direction: column;
@@ -323,7 +322,7 @@ button {
 .floating-clear-button {
   position: absolute;
   top: 16px;
-  right: 16px;
+  right: max(16px, calc((100% - 984px) / 2));
   z-index: 10;
   display: inline-flex;
   min-height: 34px;
@@ -422,9 +421,14 @@ button {
   overscroll-behavior: contain;
   padding: 30px 32px 18px;
   scroll-behavior: smooth;
-  scrollbar-gutter: stable;
+  scrollbar-gutter: stable both-edges;
   user-select: text;
   -webkit-overflow-scrolling: touch;
+}
+
+.chat-history {
+  width: min(976px, 100%);
+  margin: 0 auto;
 }
 
 .message-stage::-webkit-scrollbar {
@@ -503,6 +507,12 @@ button {
   transition:
     box-shadow 180ms ease,
     background 180ms ease;
+}
+
+.chat-body > .composer {
+  width: min(984px, calc(100% - 56px));
+  margin-right: auto;
+  margin-left: auto;
 }
 
 .composer:focus-within {
@@ -653,8 +663,9 @@ button {
 
 .error-card {
   display: flex;
+  width: min(976px, calc(100% - 64px));
   gap: 12px;
-  margin: 0 32px 12px;
+  margin: 0 auto 12px;
   border-radius: 16px;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.015)),
@@ -1106,6 +1117,12 @@ button {
   color: rgba(31, 37, 47, 0.54);
 }
 
+.theme-light .question-row .copy-button {
+  background: rgba(255, 255, 255, 0.62);
+  color: rgba(31, 36, 45, 0.72);
+  box-shadow: inset 0 0 0 1px rgba(38, 48, 64, 0.06);
+}
+
 .theme-light .empty-state svg {
   color: rgba(35, 102, 64, 0.78);
 }
@@ -1277,15 +1294,35 @@ button {
   .topbar {
     grid-template-columns: 1fr;
     align-items: center;
+    min-height: 0;
     width: 100%;
     margin: 0;
-    gap: 12px;
-    padding: 14px 16px 16px;
+    gap: 10px;
+    padding: 12px 14px 13px;
   }
 
   .brand-block {
     grid-column: 1;
     text-align: center;
+  }
+
+  .brand-title {
+    gap: 8px;
+  }
+
+  .brand-mark {
+    width: 23px;
+    height: 23px;
+  }
+
+  .brand-block h1 {
+    font-size: 1.05rem;
+  }
+
+  .brand-block p:last-child {
+    margin-top: 5px;
+    font-size: 0.82rem;
+    line-height: 1.35;
   }
 
   .topbar-actions {
@@ -1295,13 +1332,18 @@ button {
     justify-self: center;
   }
 
+  .language-switch,
+  .theme-switch {
+    min-height: 34px;
+  }
+
   .workspace {
     min-height: 0;
-    padding: 0 14px;
+    padding: 0 12px;
   }
 
   .chat-surface {
-    margin: 14px 0 8px;
+    margin: 12px 0 8px;
     border-radius: 24px;
   }
 
@@ -1313,32 +1355,80 @@ button {
 
   .prompt-strip {
     grid-template-columns: 1fr;
+    gap: 8px;
   }
 
   .start-screen {
     align-content: start;
-    gap: 16px;
-    padding: 24px 16px 0;
+    min-height: 0;
+    gap: 14px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 18px 14px 16px;
+    -webkit-overflow-scrolling: touch;
   }
 
   .message-stage {
-    min-height: 300px;
+    min-height: 0;
     max-height: none;
-    padding: 54px 16px 18px;
+    padding: 12px 16px 16px;
+    scrollbar-width: none;
+    scrollbar-gutter: auto;
+  }
+
+  .message-stage::-webkit-scrollbar {
+    display: none;
   }
 
   .empty-state {
-    padding: 0 18px;
+    font-size: 0.97rem;
+    line-height: 1.4;
   }
 
   .start-screen .empty-state {
-    flex-direction: column;
-    gap: 8px;
+    justify-content: flex-start;
+    gap: 10px;
+    padding: 0 4px;
+    text-align: left;
   }
 
   .composer {
     grid-template-columns: minmax(0, 1fr) auto;
+    min-height: 54px;
+    gap: 8px;
     margin: 0 16px 14px;
+    border-radius: 27px;
+    padding: 5px 7px 5px 16px;
+  }
+
+  .chat-body > .composer {
+    width: calc(100% - 32px);
+    margin-right: auto;
+    margin-left: auto;
+  }
+
+  .composer-input {
+    min-height: 42px;
+    padding: 8px 12px 8px 2px;
+    font-size: 1rem;
+    line-height: 1.35;
+  }
+
+  .prompt-card {
+    gap: 10px;
+  }
+
+  .prompt-title {
+    font-size: 0.68rem;
+    letter-spacing: 0.1em;
+  }
+
+  .example-button {
+    min-height: 54px;
+    border-radius: 16px;
+    padding: 11px 13px;
+    font-size: 0.92rem;
+    line-height: 1.28;
   }
 
   .thinking-row,
@@ -1347,12 +1437,43 @@ button {
   }
 
   .send-button {
-    width: 44px;
+    width: 42px;
+    height: 42px;
   }
 
-  .question-row,
+  .question-row {
+    max-width: min(32ch, 86%);
+    margin-bottom: 14px;
+    border-radius: 20px 20px 10px;
+    padding: 12px 14px;
+  }
+
+  .question-row p {
+    line-height: 1.45;
+  }
+
   .answer-block {
     max-width: 100%;
+    border-radius: 24px 24px 24px 12px;
+    padding: 15px 16px 16px;
+  }
+
+  .answer-text {
+    gap: 10px;
+    font-size: 1rem;
+    line-height: 1.65;
+  }
+
+  .citation-row {
+    margin-bottom: 22px;
+  }
+
+  .floating-clear-button {
+    position: static;
+    align-self: flex-end;
+    margin: 12px 14px 0;
+    min-height: 32px;
+    font-size: 0.8rem;
   }
 
   .copy-button {

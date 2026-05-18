@@ -325,7 +325,7 @@ function App() {
               </button>
 
               <div className="message-stage" ref={messageStageRef}>
-                <div className="space-y-8" data-testid="chat-history">
+                <div className="chat-history space-y-8" data-testid="chat-history">
                   {turns.map((turn) => (
                     <ChatExchange
                       copiedMessageId={copiedMessageId}
