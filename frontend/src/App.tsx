@@ -591,11 +591,7 @@ function ChatExchange({
           </div>
         </div>
 
-        <div className="answer-text">
-          {response.answer.split("\n").map((line) => (
-            <p key={line}>{line}</p>
-          ))}
-        </div>
+        <AnswerBody answer={response.answer} />
 
         {response.disclaimer ? (
           <div className="disclaimer" data-testid="disclaimer">
@@ -719,6 +715,68 @@ function CopyButton({
       <span>{copied ? copiedLabel : copyLabel}</span>
     </button>
   );
+}
+
+function AnswerBody({ answer }: { answer: string }) {
+  const blocks = parseAnswerBlocks(answer);
+  return (
+    <div className="answer-text">
+      {blocks.map((block, index) =>
+        block.type === "list" ? (
+          <ul key={index}>
+            {block.items.map((item, itemIndex) => (
+              <li key={itemIndex}>{item}</li>
+            ))}
+          </ul>
+        ) : (
+          <p key={index}>{block.text}</p>
+        )
+      )}
+    </div>
+  );
+}
+
+type AnswerBlock = { type: "paragraph"; text: string } | { type: "list"; items: string[] };
+
+function parseAnswerBlocks(answer: string): AnswerBlock[] {
+  const blocks: AnswerBlock[] = [];
+  let paragraph: string[] = [];
+  let list: string[] = [];
+
+  function flushParagraph() {
+    if (paragraph.length) {
+      blocks.push({ type: "paragraph", text: paragraph.join(" ") });
+      paragraph = [];
+    }
+  }
+
+  function flushList() {
+    if (list.length) {
+      blocks.push({ type: "list", items: list });
+      list = [];
+    }
+  }
+
+  for (const rawLine of answer.split("\n")) {
+    const line = rawLine.trim();
+    if (!line) {
+      flushParagraph();
+      flushList();
+      continue;
+    }
+    const bullet = line.match(/^[-*]\s+(.*)$/);
+    if (bullet) {
+      flushParagraph();
+      list.push(bullet[1]);
+    } else {
+      flushList();
+      paragraph.push(line);
+    }
+  }
+
+  flushParagraph();
+  flushList();
+  return blocks;
 }
 
 function ThinkingRow({ text }: { text: string }) {

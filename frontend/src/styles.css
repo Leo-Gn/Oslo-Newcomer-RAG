@@ -876,6 +876,19 @@ button {
   margin: 0;
 }
 
+.answer-text ul {
+  margin: 0;
+  padding-left: 1.25em;
+  display: grid;
+  gap: 6px;
+  list-style: disc;
+}
+
+.answer-text li {
+  margin: 0;
+  padding-left: 2px;
+}
+
 .disclaimer {
   display: flex;
   gap: 10px;
