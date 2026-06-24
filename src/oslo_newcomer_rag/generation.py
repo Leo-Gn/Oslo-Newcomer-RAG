@@ -415,7 +415,6 @@ def build_grounded_answer(
     answer = _expand_grouped_citations(raw_answer)
     answer = _keep_known_citation_markers(answer, source_map)
     answer = _clean_answer_formatting(answer)
-    answer = _remove_unrelated_route_details(question=question, answer=answer)
     answer = _add_missing_citations(answer, default_id="S1")
     if disclaimer:
         answer = _remove_disclaimer_text(answer, disclaimer)
@@ -782,40 +781,6 @@ def _clean_answer_formatting(answer: str) -> str:
     cleaned = answer.replace("**", "")
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
     return cleaned.strip()
-
-
-def _remove_unrelated_route_details(*, question: str, answer: str) -> str:
-    folded_question = question.casefold()
-    folded_answer = answer.casefold()
-    is_study_topic = (
-        "studietillatelse" in folded_question
-        or "study permit" in folded_question
-        or "studietillatelse" in folded_answer
-        or "study permit" in folded_answer
-    )
-    if not is_study_topic:
-        return answer
-
-    unrelated_terms = (
-        "jobbsøker",
-        "arbeidsinnvandring",
-        "skilled worker",
-        "job seeker",
-        "work immigration",
-        "27 116",
-        "325 400",
-        "norsk bankkonto",
-        "dine egne",
-        "norwegian bank account",
-        "your own",
-    )
-    paragraphs = [paragraph.strip() for paragraph in answer.split("\n\n") if paragraph.strip()]
-    kept = [
-        paragraph
-        for paragraph in paragraphs
-        if not any(term in paragraph.casefold() for term in unrelated_terms)
-    ]
-    return "\n\n".join(kept).strip() if kept else answer
 
 
 def _used_source_ids(answer: str) -> list[str]:

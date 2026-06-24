@@ -361,14 +361,13 @@ def test_model_answer_passes_through_unchanged_with_citations() -> None:
     assert [citation.citation_id for citation in answer.citations] == ["S1"]
 
 
-def test_study_permit_answer_drops_unrelated_route_amounts() -> None:
+def test_study_permit_answer_keeps_model_paragraphs() -> None:
     chat_client = StubChatClient(
         {
             "answer": (
-                "UDI does not give the exact study permit amount in these excerpts. [S1]\n\n"
-                "The amount NOK 27 116 belongs to a job seeker route. [S2]\n\n"
-                "The money must be your own and usually be in a Norwegian bank account. [S2]\n\n"
-                "Check UDI for the current study permit requirement. [S1]"
+                "UDI explains the study permit requirements. [S1]\n\n"
+                "You must prove you have enough money to support yourself. [S2]\n\n"
+                "Check UDI for the current study permit amount. [S1]"
             ),
             "refusal": False,
         }
@@ -377,14 +376,13 @@ def test_study_permit_answer_drops_unrelated_route_amounts() -> None:
     answer = build_grounded_answer(
         question="How much money for a study permit?",
         ui_language="en",
-        retrieval=_retrieval([_chunk(), _chunk(section_heading="Job seeker funds")]),
+        retrieval=_retrieval([_chunk(), _chunk(section_heading="Study permit funds")]),
         chat_client=chat_client,
     )
 
-    assert "27 116" not in answer.answer
-    assert "job seeker" not in answer.answer
-    assert "Norwegian bank account" not in answer.answer
-    assert "study permit" in answer.answer
+    assert answer.answer.count("\n\n") == 2
+    assert "prove you have enough money" in answer.answer
+    assert {citation.citation_id for citation in answer.citations} == {"S1", "S2"}
 
 
 def test_prompt_keeps_current_language_when_history_was_norwegian() -> None:
