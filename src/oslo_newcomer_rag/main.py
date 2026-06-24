@@ -1,6 +1,7 @@
 import time
 from collections import defaultdict, deque
 from collections.abc import Callable
+from contextlib import ExitStack, closing
 from datetime import datetime
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
@@ -266,86 +267,54 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if not app_settings.has_llm_config and not app_settings.has_database_config:
             raise HTTPException(status_code=503, detail="DATABASE_URL is not configured")
 
-        chat_client: OpenAICompatibleChatClient | None = None
-        try:
-            chat_client = OpenAICompatibleChatClient(app_settings)
-            chat_plan = build_chat_plan(
-                question=request.question,
-                ui_language=answer_language,
-                chat_client=chat_client,
-                session_history=session_history,
-            )
-        except ChatConfigError as exc:
-            if chat_client:
-                chat_client.close()
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
-        except ChatResponseError as exc:
-            if chat_client:
-                chat_client.close()
-            raise HTTPException(status_code=502, detail="Model provider returned an invalid answer") from exc
-        except httpx.HTTPError as exc:
-            if chat_client:
-                chat_client.close()
-            raise HTTPException(status_code=502, detail="Model provider request failed") from exc
-
-        if chat_plan.mode == "general_chat":
+        with ExitStack() as resources:
             try:
-                answer = build_general_chat_answer(
+                chat_client = resources.enter_context(closing(OpenAICompatibleChatClient(app_settings)))
+                chat_plan = build_chat_plan(
                     question=request.question,
                     ui_language=answer_language,
                     chat_client=chat_client,
                     session_history=session_history,
                 )
-            except ChatConfigError as exc:
+
+                if chat_plan.mode == "general_chat":
+                    answer = build_general_chat_answer(
+                        question=request.question,
+                        ui_language=answer_language,
+                        chat_client=chat_client,
+                        session_history=session_history,
+                    )
+                    return _chat_response(answer)
+
+                if not app_settings.has_database_config:
+                    raise HTTPException(status_code=503, detail="DATABASE_URL is not configured")
+
+                engine = create_engine_from_settings(app_settings)
+                resources.callback(engine.dispose)
+                embedder = resources.enter_context(closing(OpenAICompatibleEmbeddingClient(app_settings)))
+                with Session(engine) as session:
+                    retrieval = retrieve_for_chat(
+                        session,
+                        embedder,
+                        question=request.question,
+                        ui_language=answer_language,
+                        session_history=session_history,
+                        planned_query=chat_plan.retrieval_query,
+                    )
+                    answer = build_grounded_answer(
+                        question=request.question,
+                        ui_language=answer_language,
+                        retrieval=retrieval,
+                        chat_client=chat_client,
+                        session_history=session_history,
+                    )
+                return _chat_response(answer)
+            except (ChatConfigError, EmbeddingConfigError, ValueError) as exc:
                 raise HTTPException(status_code=503, detail=str(exc)) from exc
             except ChatResponseError as exc:
                 raise HTTPException(status_code=502, detail="Model provider returned an invalid answer") from exc
             except httpx.HTTPError as exc:
                 raise HTTPException(status_code=502, detail="Model provider request failed") from exc
-            finally:
-                if chat_client:
-                    chat_client.close()
-            return _chat_response(answer)
-
-        if not app_settings.has_database_config:
-            if chat_client:
-                chat_client.close()
-            raise HTTPException(status_code=503, detail="DATABASE_URL is not configured")
-
-        engine = create_engine_from_settings(app_settings)
-        embedder: OpenAICompatibleEmbeddingClient | None = None
-        try:
-            embedder = OpenAICompatibleEmbeddingClient(app_settings)
-            with Session(engine) as session:
-                retrieval = retrieve_for_chat(
-                    session,
-                    embedder,
-                    question=request.question,
-                    ui_language=answer_language,
-                    session_history=session_history,
-                    planned_query=chat_plan.retrieval_query,
-                )
-                answer = build_grounded_answer(
-                    question=request.question,
-                    ui_language=answer_language,
-                    retrieval=retrieval,
-                    chat_client=chat_client,
-                    session_history=session_history,
-                )
-        except (ChatConfigError, EmbeddingConfigError, ValueError) as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
-        except ChatResponseError as exc:
-            raise HTTPException(status_code=502, detail="Model provider returned an invalid answer") from exc
-        except httpx.HTTPError as exc:
-            raise HTTPException(status_code=502, detail="Model provider request failed") from exc
-        finally:
-            if embedder:
-                embedder.close()
-            if chat_client:
-                chat_client.close()
-            engine.dispose()
-
-        return _chat_response(answer)
 
     @api.post(
         "/api/feedback",
