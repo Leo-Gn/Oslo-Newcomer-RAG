@@ -53,52 +53,12 @@ FOLLOW_UP_STARTS = (
     "hvilke dokumenter",
     "og ",
 )
+# Referential pronouns plus the few topics newcomers ask follow-ups about.
 FOLLOW_UP_TERMS = {
-    "it",
-    "that",
-    "this",
-    "there",
-    "here",
-    "they",
-    "them",
-    "office",
-    "bring",
-    "else",
-    "documents",
-    "fees",
-    "cost",
-    "costs",
-    "money",
-    "funds",
-    "deadline",
-    "deadlines",
-    "appointment",
-    "work",
-    "study",
-    "studying",
-    "waitlist",
-    "waiting",
-    "list",
-    "det",
-    "den",
-    "dette",
-    "her",
-    "dit",
-    "kontor",
-    "ta",
-    "bringe",
-    "annet",
-    "dokumenter",
-    "penger",
-    "gebyr",
-    "frist",
-    "time",
-    "jobbe",
-    "studere",
-    "studerer",
-    "tillatelsen",
-    "ventelisten",
-    "venteliste",
+    "it", "that", "this", "there", "they", "them",
+    "det", "den", "dette", "her",
+    "documents", "dokumenter", "fees", "cost", "money", "penger",
+    "appointment", "office", "kontor", "waiting", "venteliste", "ventelisten",
 }
 REFUSAL_MARKERS = (
     "i do not have enough support",
@@ -263,11 +223,7 @@ def _looks_like_follow_up(question: str) -> bool:
         return True
 
     words = re.findall(r"[\wøæåØÆÅ-]+", folded)
-    if any(term in words for term in FOLLOW_UP_TERMS):
-        return True
-    if len(words) <= 8 and any(term in folded for term in FOLLOW_UP_TERMS):
-        return True
-    return False
+    return any(word in FOLLOW_UP_TERMS for word in words)
 
 
 def _conversation_context(messages: Sequence[ChatMessage]) -> str:
