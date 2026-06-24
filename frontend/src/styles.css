@@ -962,14 +962,24 @@ button {
   white-space: nowrap;
 }
 
-.citation-pill span:first-child {
+.citation-index {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 1px 7px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(235, 235, 245, 0.82);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.citation-owner {
   flex: 0 0 auto;
   color: rgba(188, 232, 197, 0.95);
   font-size: 0.82rem;
   font-weight: 680;
 }
 
-.citation-pill span:nth-child(2) {
+.citation-section {
   min-width: 0;
   font-size: 0.82rem;
 }
@@ -1291,8 +1301,13 @@ button {
   color: rgba(125, 34, 30, 0.94);
 }
 
-.theme-light .citation-pill span:first-child {
+.theme-light .citation-owner {
   color: rgba(35, 102, 64, 0.9);
+}
+
+.theme-light .citation-index {
+  background: rgba(35, 102, 64, 0.12);
+  color: rgba(35, 102, 64, 0.95);
 }
 
 @media (max-width: 760px) {

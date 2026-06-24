@@ -610,15 +610,16 @@ function ChatExchange({
           <div className="citation-pills">
             {citations.map((citation) => (
               <a
-                aria-label={`${citation.source_owner}: ${citation.section_heading}`}
+                aria-label={`${citation.label} — ${citation.source_owner}: ${citation.section_heading}`}
                 className="citation-pill"
                 href={citation.url}
                 key={citation.url}
                 rel="noreferrer"
                 target="_blank"
               >
-                <span className="font-semibold">{citation.source_owner}</span>
-                <span>{citation.section_heading}</span>
+                <span className="citation-index">{citation.label}</span>
+                <span className="citation-owner">{citation.source_owner}</span>
+                <span className="citation-section">{citation.section_heading}</span>
                 <ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />
               </a>
             ))}
@@ -842,16 +843,20 @@ function latestUpdateDate(snapshot: SourceSnapshot | null, turns: ChatTurn[]): s
 }
 
 function compactCitations(citations: ChatTurn["response"]["citations"]) {
-  const seen = new Map<string, (typeof citations)[number]>();
+  const seen = new Map<string, { citation: (typeof citations)[number]; ids: string[] }>();
 
   for (const citation of citations) {
     const url = citation.section_url || citation.source_url;
-    if (!seen.has(url)) {
-      seen.set(url, citation);
+    const existing = seen.get(url);
+    if (existing) {
+      existing.ids.push(citation.citation_id);
+    } else {
+      seen.set(url, { citation, ids: [citation.citation_id] });
     }
   }
 
-  return Array.from(seen.values()).map((citation) => ({
+  return Array.from(seen.values()).map(({ citation, ids }) => ({
+    label: ids.join(", "),
     source_owner: citation.source_owner,
     section_heading: citation.section_heading,
     url: citation.section_url || citation.source_url
