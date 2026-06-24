@@ -321,23 +321,27 @@ def test_markdown_bold_markers_are_removed_from_answer_text() -> None:
     assert answer.answer == "Check UDI for the relevant permit route. [S1]"
 
 
-def test_rag_source_wording_is_polished_for_chat() -> None:
+def test_prompt_forbids_referring_to_the_excerpts() -> None:
+    chat_client = StubChatClient({"answer": "A D number is issued by the tax office. [S1]", "refusal": False})
+
+    build_grounded_answer(
+        question="How do I get a D-number?",
+        ui_language="en",
+        retrieval=_retrieval([_chunk()]),
+        chat_client=chat_client,
+    )
+
+    system = chat_client.messages[0].content
+    assert "the excerpts" in system
+    assert "the official information" in system
+
+
+def test_model_answer_passes_through_unchanged_with_citations() -> None:
     chat_client = StubChatClient(
         {
             "answer": (
-                "These notes explain that D numbers are connected to residence permits. [S1]\n\n"
-                "The official info here do not list the exact documents to bring. [S1]\n\n"
-                "For your situation), The official information does not decide eligibility. [S1]\n\n"
-                "But those excerpts do not say anything specific about dagpenger. [S1]\n\n"
-                "The excerpt you provided does not list the full citizenship rules. [S1]\n\n"
-                "What you can do next, based on the official pages you shared: [S1]\n\n"
-                "These official pages do not say exactly what you must apply for. [S1]\n\n"
-                "The official UDI page you provided says to apply online. [S1]\n\n"
-                "Your excerpt doesn't include the exact checklist. [S1]\n\n"
-                "Choose the route based on what is missing in The official information. [S1]\n\n"
-                "The required residence period is not shown in The official information. [S1]\n\n"
-                "The official information from UDI do not list the full checklist. [S1]\n\n"
-                "These official UDI pages cover permanent residence. [S1]"
+                "A D number is a temporary identity number. [S1]\n\n"
+                "The official information does not list every document to bring. [S1]"
             ),
             "refusal": False,
         }
@@ -350,64 +354,11 @@ def test_rag_source_wording_is_polished_for_chat() -> None:
         chat_client=chat_client,
     )
 
-    assert "These pages" not in answer.answer
-    assert "These sources" not in answer.answer
-    assert "These notes" not in answer.answer
-    assert "official info here" not in answer.answer
-    assert "do not list" not in answer.answer
-    assert "), The official information" not in answer.answer
-    assert "those excerpts" not in answer.answer
-    assert "excerpt you provided" not in answer.answer
-    assert "pages you shared" not in answer.answer
-    assert "These official pages" not in answer.answer
-    assert "page you provided" not in answer.answer
-    assert "Your excerpt" not in answer.answer
-    assert "what is missing in The official information" not in answer.answer
-    assert "not shown in The official information" not in answer.answer
-    assert "from UDI do not" not in answer.answer
-    assert "These official UDI pages" not in answer.answer
-    assert answer.answer.startswith("Official information says")
-    assert "The official information here does not list" in answer.answer
-    assert "The UDI page says to apply online" in answer.answer
-    assert "The official information here does not include the exact checklist" in answer.answer
-
-
-def test_norwegian_source_wording_is_polished_for_chat() -> None:
-    chat_client = StubChatClient(
-        {
-            "answer": (
-                "De offisielle utdragene sier ikke et bestemt beløp. [S1]\n\n"
-                "Dette den offisielle informasjonen oppgir ikke beløpet. [S1]\n\n"
-                "Sjekk UDI for riktig beløp, siden dette ikke er oppgitt her. [S1]\n\n"
-                "Du må søke om tillatelse, men den gir ikke et tall. [S1]\n\n"
-                "Sjekk UDI, siden den offisielle informasjonen ikke oppgir beløpet. [S1]\n\n"
-                "UDI oppgir ikke i disse utdragene et generelt beløp. [S1]\n\n"
-                "Hvis du sier hvilken type tillatelse du mener (for eksempel studier), "
-                "kan jeg prøve å finne det som faktisk står i den offisielle informasjonen "
-                "for akkurat den ruten. [S1]"
-            ),
-            "refusal": False,
-        }
+    assert answer.answer == (
+        "A D number is a temporary identity number. [S1]\n\n"
+        "The official information does not list every document to bring. [S1]"
     )
-
-    answer = build_grounded_answer(
-        question="Hvor mye penger må jeg bevise at jeg har?",
-        ui_language="no",
-        retrieval=_retrieval([_chunk()]),
-        chat_client=chat_client,
-    )
-
-    assert "utdragene" not in answer.answer
-    assert "De offisielle Den" not in answer.answer
-    assert "Dette den offisielle" not in answer.answer
-    assert "Den offisielle informasjonen sier ikke" in answer.answer
-    assert ", siden dette ikke er oppgitt" not in answer.answer
-    assert "Dette er ikke oppgitt her" in answer.answer
-    assert ", men den gir ikke" not in answer.answer
-    assert "Den gir ikke et tall" in answer.answer
-    assert ", siden den offisielle informasjonen" not in answer.answer
-    assert "i disse den offisielle informasjonen" not in answer.answer
-    assert "hvilken type tillatelse du mener" not in answer.answer
+    assert [citation.citation_id for citation in answer.citations] == ["S1"]
 
 
 def test_study_permit_answer_drops_unrelated_route_amounts() -> None:
