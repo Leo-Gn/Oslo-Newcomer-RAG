@@ -98,6 +98,30 @@ def test_evaluate_case_blends_deterministic_and_judge_scores() -> None:
     assert result.judge_scores.notes == "ok"
 
 
+def test_general_chat_answer_scored_fairly_without_retrieval() -> None:
+    case = _case(
+        expected_owners=(),
+        expected_categories=(),
+        answer_keywords=("help", "Oslo"),
+        expected_retrieval=False,
+    )
+    retrieval = RetrievalResult(query=case.question, low_confidence=True, chunks=[])
+    answer = _answer("Hi! I can help you find official Oslo information.", citations=[])
+
+    result = evaluate_case(
+        case=case,
+        retrieval=retrieval,
+        answer=answer,
+        judge=StaticJudge(JudgeScores(faithfulness=0.0, answer_relevance=0.0, notes="should be ignored")),
+    )
+
+    assert result.metrics.faithfulness == 1.0
+    assert result.metrics.answer_relevance == 1.0
+    assert result.metrics.citation_coverage == 1.0
+    assert result.metrics.refusal_correctness == 1.0
+    assert result.judge_scores.notes == "general chat, no retrieval expected"
+
+
 def test_parse_judge_response_accepts_json_blocks_and_clamps_scores() -> None:
     scores = parse_judge_response(
         '```json\n{"faithfulness": 1.3, "answer_relevance": -0.2, "notes": "bounded"}\n```'

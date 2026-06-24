@@ -627,6 +627,8 @@ def _judge_or_default(
     if answer.refused:
         score = 1.0 if case.expected_refusal else 0.0
         return JudgeScores(faithfulness=score, answer_relevance=score, notes="refusal checked deterministically")
+    if not case.expected_retrieval and not case.expected_refusal:
+        return JudgeScores(faithfulness=1.0, answer_relevance=1.0, notes="general chat, no retrieval expected")
     if retrieval.low_confidence or not retrieval.chunks:
         return JudgeScores(faithfulness=0.0, answer_relevance=0.0, notes="no context for judge")
     return judge.judge(question=case.question, answer=answer.answer, context=retrieval.chunks)
