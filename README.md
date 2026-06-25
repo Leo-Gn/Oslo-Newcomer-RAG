@@ -12,8 +12,8 @@ https://oslo-newcomer-rag-xqhde.ondigitalocean.app/
 
 <table width="100%">
   <tr>
-    <td width="50%"><img src="assets/light-mode.png" width="100%" alt="A cited tax deduction card answer in light mode, in English"></td>
-    <td width="50%"><img src="assets/dark-mode.png" width="100%" alt="A cited tax card answer in dark mode, in Norwegian"></td>
+    <td width="50%"><img src="assets/light.png" width="100%" alt="A cited tax deduction card answer in light mode, in English"></td>
+    <td width="50%"><img src="assets/dark.png" width="100%" alt="A cited tax card answer in dark mode, in Norwegian"></td>
   </tr>
   <tr>
     <td align="center"><sub>A cited answer in light mode.</sub></td>
