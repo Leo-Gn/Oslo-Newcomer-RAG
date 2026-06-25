@@ -22,7 +22,10 @@ from oslo_newcomer_rag.db.session import create_engine_from_settings
 from oslo_newcomer_rag.sources import OFFICIAL_DOMAINS, SourceEntry, load_source_registry
 
 
-DEFAULT_USER_AGENT = "OsloNewcomerRAG/0.1 static snapshot (+https://github.com/)"
+DEFAULT_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+)
 MAX_SECTION_WORDS = 450
 SECTION_OVERLAP_WORDS = 60
 MAX_REDIRECTS = 5
@@ -104,7 +107,11 @@ def _get_with_retries(client: httpx.Client, url: str, *, attempts: int = 3, back
 
 
 def fetch_source_page(source: SourceEntry, timeout: float = 25.0) -> FetchedPage:
-    headers = {"User-Agent": DEFAULT_USER_AGENT, "Accept": "text/html,application/xhtml+xml"}
+    headers = {
+        "User-Agent": DEFAULT_USER_AGENT,
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en;q=0.9,nb;q=0.8",
+    }
     allowed_hosts = OFFICIAL_DOMAINS[source.owner]
     current_url = source.url
     with httpx.Client(follow_redirects=False, timeout=timeout, headers=headers) as client:
