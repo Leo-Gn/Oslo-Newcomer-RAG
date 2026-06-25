@@ -58,6 +58,7 @@ const text = {
     answer: "Answer",
     question: "You",
     error: "Request failed",
+    greeting: "How can I help you settle in Oslo?",
     empty: "Ask about permits, public services, work, tax, housing, or international student resources.",
     helpful: "Helpful",
     notHelpful: "Not helpful",
@@ -102,6 +103,7 @@ const text = {
     answer: "Svar",
     question: "Du",
     error: "Forespørselen feilet",
+    greeting: "Hvordan kan jeg hjelpe deg i Oslo?",
     empty: "Spør om opphold, offentlige tjenester, arbeid, skatt, bolig eller ressurser for internasjonale studenter.",
     helpful: "Nyttig",
     notHelpful: "Ikke nyttig",
@@ -374,9 +376,9 @@ function App() {
             </div>
           ) : (
             <div className="start-screen" onClick={onMessageStageClick}>
-              <div className="empty-state">
-                <BookOpen aria-hidden="true" className="h-5 w-5" />
-                <span>{copy.empty}</span>
+              <div className="start-hero">
+                <h2>{copy.greeting}</h2>
+                <p>{copy.empty}</p>
               </div>
 
               <Composer

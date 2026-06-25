@@ -51,8 +51,9 @@ button {
   height: 100svh;
   overflow: hidden;
   flex-direction: column;
-  isolation: isolate;
-  background: #050607;
+  background:
+    radial-gradient(140% 90% at 50% -20%, rgba(46, 84, 84, 0.4), transparent 55%),
+    linear-gradient(180deg, #0b0f14, #07090d);
   color: #f4f4f6;
   transition:
     background 220ms ease,
@@ -65,32 +66,6 @@ button {
 
 .theme-dark {
   color-scheme: dark;
-}
-
-.app-shell::before,
-.app-shell::after {
-  position: fixed;
-  inset: 0;
-  content: "";
-  pointer-events: none;
-}
-
-.app-shell::before {
-  inset: -3vh -3vw;
-  z-index: -2;
-  background:
-    linear-gradient(180deg, rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.2)),
-    url("/lunar-wallpaper.svg") center / cover no-repeat;
-  filter: blur(9px) saturate(96%);
-  opacity: 0.96;
-  transform: scale(1.015);
-}
-
-.app-shell::after {
-  z-index: -1;
-  background:
-    radial-gradient(circle at 50% 18%, rgba(255, 255, 255, 0.035), transparent 28rem),
-    linear-gradient(180deg, rgba(4, 5, 7, 0.28), rgba(4, 5, 7, 0.46) 48%, rgba(4, 5, 7, 0.62));
 }
 
 .topbar,
@@ -274,14 +249,12 @@ button {
   flex-direction: column;
   overflow: hidden;
   border-radius: 28px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.02)),
-    rgba(8, 10, 14, 0.44);
+  background: linear-gradient(180deg, rgba(28, 33, 40, 0.82), rgba(20, 24, 30, 0.84));
   box-shadow:
-    0 28px 80px rgba(0, 0, 0, 0.5),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.08),
-    inset 0 1px 0 rgba(255, 255, 255, 0.14);
-  backdrop-filter: blur(20px) saturate(125%);
+    0 24px 70px rgba(0, 0, 0, 0.45),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.07),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(16px) saturate(115%);
 }
 
 .chat-surface-start {
@@ -420,33 +393,35 @@ button {
   background: rgba(235, 235, 245, 0.2);
 }
 
-.empty-state {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  color: rgba(235, 235, 245, 0.5);
-  font-size: 1rem;
-  font-weight: 620;
-  letter-spacing: 0.005em;
+.start-hero {
+  width: min(760px, 100%);
+  margin: 0 auto;
   text-align: center;
 }
 
-.empty-state svg {
-  color: rgba(188, 232, 197, 0.88);
+.start-hero h2 {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.95);
+  font-size: clamp(1.55rem, 3vw, 2.15rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.16;
+}
+
+.start-hero p {
+  max-width: 52ch;
+  margin: 11px auto 0;
+  color: rgba(235, 235, 245, 0.6);
+  font-size: 1rem;
+  line-height: 1.5;
 }
 
 .start-screen {
   display: grid;
   flex: 1 1 auto;
   align-content: center;
-  gap: 20px;
-  padding: 0 34px 3vh;
-}
-
-.start-screen .empty-state {
-  min-height: auto;
-  margin-bottom: 2px;
+  gap: 22px;
+  padding: 0 34px 8vh;
 }
 
 .start-screen .composer {
@@ -733,12 +708,10 @@ button {
   max-width: min(96ch, 84%);
   color: rgba(245, 245, 247, 0.94);
   border-radius: 28px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.015)),
-    rgba(44, 45, 49, 0.4);
+  background: rgba(46, 52, 60, 0.62);
   box-shadow:
-    0 14px 36px rgba(0, 0, 0, 0.16),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+    0 14px 36px rgba(0, 0, 0, 0.18),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.06);
   padding: 17px 18px 18px;
   user-select: text;
 }
@@ -960,30 +933,19 @@ button {
 }
 
 .theme-light {
-  background: rgba(246, 247, 249, 0.18);
+  background:
+    radial-gradient(140% 90% at 50% -20%, rgba(176, 206, 206, 0.55), transparent 55%),
+    linear-gradient(180deg, #eef2f6, #e3e8ee);
   color: rgba(28, 30, 34, 0.92);
 }
 
-.theme-light::before {
-  filter: blur(7px) saturate(108%) brightness(1.18);
-  opacity: 0.92;
-}
-
-.theme-light::after {
-  background:
-    radial-gradient(circle at 50% 18%, rgba(255, 255, 255, 0.13), transparent 30rem),
-    linear-gradient(180deg, rgba(245, 247, 252, 0.12), rgba(235, 240, 248, 0.2) 48%, rgba(210, 218, 230, 0.24));
-}
-
 .theme-light .chat-surface {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.1)),
-    rgba(255, 255, 255, 0.14);
+  background: linear-gradient(180deg, rgba(247, 249, 252, 0.9), rgba(242, 245, 249, 0.86));
   box-shadow:
-    0 28px 80px rgba(14, 20, 31, 0.24),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.42),
-    inset 0 1px 0 rgba(255, 255, 255, 0.6);
-  backdrop-filter: blur(20px) saturate(132%);
+    0 24px 64px rgba(20, 30, 45, 0.16),
+    inset 0 0 0 1px rgba(30, 45, 60, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(14px) saturate(118%);
 }
 
 .theme-light .topbar,
@@ -1065,30 +1027,28 @@ button {
   color: rgba(30, 36, 46, 0.74);
 }
 
-.theme-light .empty-state {
-  color: rgba(31, 35, 43, 0.82);
+.theme-light .start-hero h2 {
+  color: rgba(17, 22, 30, 0.95);
+}
+
+.theme-light .start-hero p {
+  color: rgba(40, 48, 60, 0.72);
 }
 
 .theme-light .answer-block {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.62), rgba(255, 255, 255, 0.4)),
-    rgba(255, 255, 255, 0.34);
+  background: rgba(255, 255, 255, 0.96);
   color: rgba(17, 21, 29, 0.94);
   box-shadow:
-    0 16px 40px rgba(18, 24, 34, 0.13),
-    inset 0 0 0 1px rgba(38, 48, 64, 0.07),
-    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+    0 14px 36px rgba(18, 24, 34, 0.1),
+    inset 0 0 0 1px rgba(38, 48, 64, 0.08);
 }
 
 .theme-light .question-row {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.34)),
-    rgba(255, 255, 255, 0.38);
+  background: rgba(224, 231, 240, 0.92);
   color: rgba(17, 21, 29, 0.94);
   box-shadow:
-    0 12px 30px rgba(18, 24, 34, 0.14),
-    inset 0 0 0 1px rgba(38, 48, 64, 0.08),
-    inset 0 1px 0 rgba(255, 255, 255, 0.68);
+    0 8px 22px rgba(18, 24, 34, 0.1),
+    inset 0 0 0 1px rgba(38, 48, 64, 0.06);
 }
 
 .theme-light .question-row .speaker-label {
@@ -1099,10 +1059,6 @@ button {
   background: rgba(255, 255, 255, 0.62);
   color: rgba(31, 36, 45, 0.72);
   box-shadow: inset 0 0 0 1px rgba(38, 48, 64, 0.06);
-}
-
-.theme-light .empty-state svg {
-  color: rgba(35, 102, 64, 0.78);
 }
 
 .theme-light .example-button,
@@ -1357,16 +1313,17 @@ button {
     display: none;
   }
 
-  .empty-state {
-    font-size: 0.97rem;
-    line-height: 1.4;
+  .start-hero {
+    padding: 0 2px;
+    text-align: left;
   }
 
-  .start-screen .empty-state {
-    justify-content: flex-start;
-    gap: 10px;
-    padding: 0 4px;
-    text-align: left;
+  .start-hero h2 {
+    font-size: 1.6rem;
+  }
+
+  .start-hero p {
+    font-size: 0.95rem;
   }
 
   .composer {
