@@ -10,24 +10,24 @@ https://oslo-newcomer-rag-xqhde.ondigitalocean.app/
 
 ## Screenshots
 
-<p align="center">
-  <img src="assets/light-mode.png" width="440" alt="A cited answer about the tax deduction card in light mode">
-  <img src="assets/dark-mode.png" width="440" alt="A cited answer about finding a doctor in dark mode">
-</p>
-<p align="center">
-  <sub>A cited answer in light mode.</sub>
-  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-  <sub>The same kind of answer in dark mode.</sub>
-</p>
-<p align="center">
-  <img src="assets/refusal.png" width="440" alt="The app declining to look up a personal tax record">
-  <img src="assets/norwegian.png" width="440" alt="The same app answering a tax card question in Norwegian">
-</p>
-<p align="center">
-  <sub>Declining a personal-record request instead of guessing.</sub>
-  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-  <sub>The same app, answering in Norwegian.</sub>
-</p>
+<table width="100%">
+  <tr>
+    <td width="50%"><img src="assets/light-mode.png" width="100%" alt="A cited tax deduction card answer in light mode"></td>
+    <td width="50%"><img src="assets/dark-mode.png" width="100%" alt="A cited answer about finding a doctor in dark mode"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>A cited answer in light mode.</sub></td>
+    <td align="center"><sub>The same kind of answer in dark mode.</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="assets/disclaimer.png" width="100%" alt="A personal eligibility question answered with general information and a legal-advice note"></td>
+    <td width="50%"><img src="assets/norwegian.png" width="100%" alt="A tax card question answered in Norwegian with citations"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>General information and a legal-advice note on a personal question.</sub></td>
+    <td align="center"><sub>The same app, answering in Norwegian.</sub></td>
+  </tr>
+</table>
 
 ## What it does
 
