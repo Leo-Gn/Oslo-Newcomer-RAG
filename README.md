@@ -1,70 +1,79 @@
 # Oslo Newcomer RAG
 
-I built this as a small portfolio project for newcomers who need a simpler, more accessible way to navigate official Norwegian public-service information. The app answers questions about moving to Oslo, permits, tax, work, housing, healthcare, and student life using a stored snapshot of official sources.
+A question-answering app for people who have just moved to Oslo and need to find their way through Norwegian public services. It answers questions about permits, tax, work, housing, healthcare, and student life, and it backs every answer with a link to the official source page.
 
-The goal is not to replace UDI, NAV, Skatteetaten, Oslo kommune, SUA, or SiO. I wanted the demo to point users to the right official page, explain the answer in plain language, and show citations every time.
+I built it as a portfolio project. The point is not to replace UDI, NAV, Skatteetaten, Oslo kommune, SUA, or SiO, but to make their information easier to reach. You ask a question in plain language, you get a short answer, and you see exactly which official page it came from.
 
-### [Live demo](https://oslo-newcomer-rag-xqhde.ondigitalocean.app/)
+## Live demo
+
+https://oslo-newcomer-rag-xqhde.ondigitalocean.app/
 
 ## Screenshots
 
-<div align="center">
-  <div>
-    <img src="assets/light-mode-main.png" alt="Light mode chat interface with a cited answer" width="360">
-    <img src="assets/dark-mode-toggle.gif" alt="Dark mode toggle changing the chat interface" width="360">
-  </div>
-  <div>
-    <sub>Tax deduction card answer with official-source citations.</sub>
-    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-    <sub>Theme toggle on a student-permit work question.</sub>
-  </div>
-  <br>
-  <div>
-    <img src="assets/legal-question-refusal.png" alt="Refusal answer for a personal legal question" width="360">
-    <img src="assets/norwegian-example.png" alt="Norwegian question answered with citations" width="360">
-  </div>
-  <div>
-    <sub>Refusal to fill out an immigration application.</sub>
-    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-    <sub>Norwegian tax card answer with cited sources.</sub>
-  </div>
-</div>
+<p align="center">
+  <img src="assets/light-mode.png" width="440" alt="A cited answer about the tax deduction card in light mode">
+  <img src="assets/dark-mode.png" width="440" alt="A cited answer about finding a doctor in dark mode">
+</p>
+<p align="center">
+  <sub>A cited answer in light mode.</sub>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+  <sub>The same kind of answer in dark mode.</sub>
+</p>
+<p align="center">
+  <img src="assets/refusal.png" width="440" alt="The app declining to look up a personal tax record">
+  <img src="assets/norwegian.png" width="440" alt="The same app answering a tax card question in Norwegian">
+</p>
+<p align="center">
+  <sub>Declining a personal-record request instead of guessing.</sub>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+  <sub>The same app, answering in Norwegian.</sub>
+</p>
 
-## Tech Stack
+## What it does
 
-- **Backend:** FastAPI, Pydantic, SQLAlchemy, Alembic
-- **Database:** Postgres with pgvector
-- **Frontend:** React, TypeScript, Vite, Tailwind CSS
-- **Retrieval:** hybrid keyword and vector search over stored official-source chunks
-- **Models:** OpenAI-compatible chat and embedding endpoints set through environment variables
-- **Evaluation:** pytest plus a small RAG evaluation set in `eval/gold_questions.yml`
+- Answers only from a fixed set of allowlisted official sources, listed in `sources.yml`.
+- Cites the source on every factual claim, with the owner, the section heading, and a link to the page.
+- Keeps the collection date and the official last-updated date for each source.
+- Refuses the things it should not do, such as personal-record lookups, eligibility decisions, legal advice, and filling in forms.
+- Works in English and Norwegian, and replies in the language you asked in.
+- Saves anonymous thumbs-up or thumbs-down feedback, without storing the question or the answer text.
+- Runs no live web search. Answers come from a one-time snapshot, so the results are stable and easy to check.
 
-## What The App Does
+## Tech stack
 
-- Uses only allowlisted official sources from `sources.yml`
-- Stores source URL, section heading, collection date, and official last-updated date when available
-- Answers with citations instead of unsupported claims
-- Refuses low-confidence or personal legal-risk questions
-- Stores anonymous feedback without saving the question or answer text
-- Avoids live web search during chat; answers come from the stored snapshot
+- Backend: FastAPI, Pydantic, SQLAlchemy, Alembic
+- Database: PostgreSQL with the pgvector extension
+- Frontend: React, TypeScript, Vite, Tailwind CSS
+- Retrieval: hybrid search that mixes vector similarity with Postgres full-text search
+- Models: any OpenAI-compatible chat and embedding endpoint, set through environment variables
+- Tests: pytest for the backend, Playwright for the frontend, and a small RAG evaluation set
 
-## Run It Locally With Docker
+## How it works
 
-Create your local environment file:
+1. Ingestion fetches the allowlisted pages once, parses them into sections, splits them into chunks, and stores the snapshot. This is a one-time command, not a live crawl.
+2. Retrieval embeds the question, runs vector and keyword search together, expands a few domain terms, and gates low-confidence matches so the app can say when it does not have an answer.
+3. Generation passes the retrieved chunks to the chat model with strict instructions to answer only from that material and to cite each claim.
+4. Evaluation scores the answers against an offline gold set before changes go out.
+
+It runs as a single web service. The Docker image builds the React frontend and serves it from the FastAPI app.
+
+## Run it locally
+
+You need Docker and a `.env` file with database values and an OpenAI-compatible API key.
+
+Copy the example file and fill in your own values:
 
 ```bash
 cp .env.example .env
 ```
 
-Fill in your local values in `.env`. Keep real keys out of Git.
-
-Start the app and database:
+Start the app and the database:
 
 ```bash
 docker compose up --build
 ```
 
-In a second terminal, prepare the database and source snapshot:
+In a second terminal, set up the schema and the source snapshot:
 
 ```bash
 docker compose exec app uv run alembic upgrade head
@@ -72,22 +81,16 @@ docker compose exec app uv run oslo-ingest-sources
 docker compose exec app uv run oslo-build-embeddings
 ```
 
-Open the app:
-
-```text
-http://localhost:8000
-```
-
-Useful checks:
+The app is then at http://localhost:8000. Two quick checks:
 
 ```bash
 curl http://localhost:8000/healthz
 curl http://localhost:8000/api/sources
 ```
 
-## RAG Evaluation
+## Evaluation
 
-The evaluation set includes supported questions, unsupported questions, mixed-language prompts, and legal-risk prompts. It is small on purpose, but it catches the main mistakes I care about in this demo.
+The gold set in `eval/gold_questions.yml` covers supported questions, unsupported questions, mixed-language prompts, and questions the app should refuse. It is small on purpose, but it catches the mistakes that matter for this kind of app.
 
 Run the backend tests:
 
@@ -101,27 +104,17 @@ Run the RAG evaluation:
 uv run rag-eval
 ```
 
-The report includes:
+The report covers context precision, context recall, faithfulness, answer relevance, citation coverage, refusal correctness, and language match.
 
-- context precision
-- context recall
-- faithfulness
-- answer relevance
-- citation coverage
-- refusal correctness
-- language match
-
-Run the release check before committing:
+Run the hygiene check before committing:
 
 ```bash
 uv run release-check
 ```
 
-## Deployment Notes
+## Deployment
 
-The Docker image builds the React frontend and serves it from the FastAPI app, so the public demo can run from one web service. A hosted version still needs a Postgres database with pgvector and the same environment variables used locally.
-
-The first production setup needs one manual seed step:
+The public demo runs as one web service with a managed Postgres database that has pgvector, using the same environment variables as the local setup. A fresh deployment needs the seed step once:
 
 ```bash
 uv run alembic upgrade head
