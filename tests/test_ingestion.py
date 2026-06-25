@@ -1,5 +1,9 @@
 from datetime import UTC, datetime
 
+import httpx
+import pytest
+
+from oslo_newcomer_rag import ingestion
 from oslo_newcomer_rag.ingestion import FetchedPage, _parse_date_value, chunk_section, parse_official_page
 
 
@@ -115,3 +119,32 @@ def test_section_anchor_is_url_encoded() -> None:
     )
 
     assert parsed.sections[0].url.endswith("#work%20route")
+
+
+def test_get_with_retries_recovers_from_transient_reset(monkeypatch) -> None:
+    monkeypatch.setattr(ingestion.time, "sleep", lambda *_: None)
+
+    class FlakyClient:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def get(self, url: str) -> str:
+            self.calls += 1
+            if self.calls < 3:
+                raise httpx.ConnectError("Connection reset by peer")
+            return "page"
+
+    client = FlakyClient()
+    assert ingestion._get_with_retries(client, "https://example.com", backoff=0) == "page"
+    assert client.calls == 3
+
+
+def test_get_with_retries_gives_up_after_attempts(monkeypatch) -> None:
+    monkeypatch.setattr(ingestion.time, "sleep", lambda *_: None)
+
+    class DeadClient:
+        def get(self, url: str) -> str:
+            raise httpx.ConnectError("Connection reset by peer")
+
+    with pytest.raises(httpx.ConnectError):
+        ingestion._get_with_retries(DeadClient(), "https://example.com", attempts=2, backoff=0)

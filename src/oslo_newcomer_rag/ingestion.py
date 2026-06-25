@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 import re
+import time
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -89,6 +90,19 @@ def normalize_text(value: str) -> str:
     return value.strip()
 
 
+def _get_with_retries(client: httpx.Client, url: str, *, attempts: int = 3, backoff: float = 1.5) -> httpx.Response:
+    for attempt in range(attempts):
+        try:
+            return client.get(url)
+        except httpx.TransportError:
+            # Official servers occasionally reset the TLS handshake; one transient
+            # reset shouldn't abort a whole snapshot run, so retry a few times.
+            if attempt + 1 == attempts:
+                raise
+            time.sleep(backoff * (attempt + 1))
+    raise SnapshotFetchError(f"could not fetch {url}")
+
+
 def fetch_source_page(source: SourceEntry, timeout: float = 25.0) -> FetchedPage:
     headers = {"User-Agent": DEFAULT_USER_AGENT, "Accept": "text/html,application/xhtml+xml"}
     allowed_hosts = OFFICIAL_DOMAINS[source.owner]
@@ -96,7 +110,7 @@ def fetch_source_page(source: SourceEntry, timeout: float = 25.0) -> FetchedPage
     with httpx.Client(follow_redirects=False, timeout=timeout, headers=headers) as client:
         for redirect_count in range(MAX_REDIRECTS + 1):
             _validate_official_https_url(current_url, allowed_hosts, source.id)
-            response = client.get(current_url)
+            response = _get_with_retries(client, current_url)
             if not response.is_redirect:
                 break
             if redirect_count == MAX_REDIRECTS:
