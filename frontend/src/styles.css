@@ -52,7 +52,7 @@ button {
   overflow: hidden;
   flex-direction: column;
   background:
-    radial-gradient(140% 90% at 50% -20%, rgba(46, 84, 84, 0.4), transparent 55%),
+    radial-gradient(120% 80% at 50% -25%, rgba(44, 72, 88, 0.38), transparent 55%),
     linear-gradient(180deg, #0b0f14, #07090d);
   color: #f4f4f6;
   transition:
@@ -435,7 +435,7 @@ button {
 }
 
 .chat-surface-active .message-stage {
-  padding-top: 62px;
+  padding-top: 70px;
 }
 
 .composer {
@@ -934,8 +934,8 @@ button {
 
 .theme-light {
   background:
-    radial-gradient(140% 90% at 50% -20%, rgba(176, 206, 206, 0.55), transparent 55%),
-    linear-gradient(180deg, #eef2f6, #e3e8ee);
+    radial-gradient(120% 80% at 50% -25%, rgba(150, 178, 192, 0.3), transparent 55%),
+    linear-gradient(180deg, #eef1f5, #e4e8ee);
   color: rgba(28, 30, 34, 0.92);
 }
 
@@ -1292,12 +1292,12 @@ button {
   }
 
   .start-screen {
-    align-content: start;
+    align-content: center;
     min-height: 0;
-    gap: 14px;
+    gap: 18px;
     overflow-y: auto;
     overscroll-behavior: contain;
-    padding: 18px 14px 16px;
+    padding: 20px 16px 24px;
     -webkit-overflow-scrolling: touch;
   }
 
