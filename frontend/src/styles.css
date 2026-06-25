@@ -185,13 +185,11 @@ button {
   align-items: center;
   border-radius: 999px;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.018)),
-    rgba(42, 42, 45, 0.56);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.018)),
+    rgba(44, 44, 47, 0.62);
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.075),
-    inset 0 1px 0 rgba(255, 255, 255, 0.1),
-    0 10px 28px rgba(0, 0, 0, 0.22);
-  backdrop-filter: blur(18px) saturate(120%);
+    0 6px 18px rgba(0, 0, 0, 0.2);
 }
 
 .theme-switch {
@@ -277,29 +275,13 @@ button {
   overflow: hidden;
   border-radius: 28px;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.105), rgba(255, 255, 255, 0.032) 34%, rgba(255, 255, 255, 0.014)),
-    rgba(8, 10, 14, 0.42);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.02)),
+    rgba(8, 10, 14, 0.44);
   box-shadow:
-    0 36px 118px rgba(0, 0, 0, 0.6),
-    0 2px 0 rgba(255, 255, 255, 0.025),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.082),
-    inset 0 1px 0 rgba(255, 255, 255, 0.16),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.36);
-  backdrop-filter: blur(24px) saturate(128%);
-}
-
-.chat-surface::before {
-  position: absolute;
-  inset: 1px;
-  border-radius: inherit;
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.035), transparent 32%);
-  content: "";
-  pointer-events: none;
-}
-
-.chat-surface > * {
-  position: relative;
-  z-index: 1;
+    0 28px 80px rgba(0, 0, 0, 0.5),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(20px) saturate(125%);
 }
 
 .chat-surface-start {
@@ -336,10 +318,8 @@ button {
   color: rgba(245, 245, 247, 0.88);
   padding: 0 12px;
   box-shadow:
-    0 12px 30px rgba(0, 0, 0, 0.24),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.08),
-    inset 0 1px 0 rgba(255, 255, 255, 0.16);
-  backdrop-filter: blur(18px) saturate(128%);
+    0 8px 20px rgba(0, 0, 0, 0.22),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.08);
   font-size: 0.82rem;
   font-weight: 680;
   transition:
@@ -385,12 +365,11 @@ button {
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.105), rgba(255, 255, 255, 0.028)),
     rgba(55, 55, 58, 0.5);
-  color: rgba(245, 245, 247, 0.84);
+  color: rgba(245, 245, 247, 0.86);
   padding: 13px 15px;
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.07),
-    inset 0 1px 0 rgba(255, 255, 255, 0.11),
-    0 14px 34px rgba(0, 0, 0, 0.2);
+    0 10px 24px rgba(0, 0, 0, 0.16);
   font-size: 0.91rem;
   font-weight: 610;
   line-height: 1.32;
@@ -494,16 +473,13 @@ button {
   min-height: 58px;
   border-radius: 30px;
   background:
-    radial-gradient(circle at 20% 0, rgba(255, 255, 255, 0.11), transparent 17rem),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.03)),
-    rgba(34, 35, 39, 0.54);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.028)),
+    rgba(36, 37, 41, 0.6);
   box-shadow:
-    0 20px 56px rgba(0, 0, 0, 0.4),
-    0 8px 24px rgba(0, 0, 0, 0.18),
+    0 16px 40px rgba(0, 0, 0, 0.34),
     inset 0 0 0 1px rgba(255, 255, 255, 0.075),
-    inset 0 1px 0 rgba(255, 255, 255, 0.15);
+    inset 0 1px 0 rgba(255, 255, 255, 0.13);
   padding: 7px 9px 7px 20px;
-  backdrop-filter: blur(24px) saturate(138%);
   transition:
     box-shadow 180ms ease,
     background 180ms ease;
@@ -517,15 +493,12 @@ button {
 
 .composer:focus-within {
   background:
-    radial-gradient(circle at 20% 0, rgba(255, 255, 255, 0.145), transparent 18rem),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.145), rgba(255, 255, 255, 0.04)),
-    rgba(41, 42, 46, 0.62);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.135), rgba(255, 255, 255, 0.038)),
+    rgba(43, 44, 48, 0.66);
   box-shadow:
-    0 24px 72px rgba(0, 0, 0, 0.48),
-    0 0 0 1px rgba(188, 232, 197, 0.18),
-    0 0 34px rgba(48, 209, 88, 0.08),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.105),
-    inset 0 1px 0 rgba(255, 255, 255, 0.16);
+    0 18px 48px rgba(0, 0, 0, 0.4),
+    0 0 0 1px rgba(188, 232, 197, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14);
 }
 
 .composer-input {
@@ -614,14 +587,11 @@ button {
   max-width: min(78ch, 76%);
   border-radius: 18px;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.02)),
-    rgba(58, 58, 60, 0.42);
-  color: rgba(235, 235, 245, 0.7);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.018)),
+    rgba(58, 58, 60, 0.5);
+  color: rgba(235, 235, 245, 0.74);
   padding: 11px 14px;
-  box-shadow:
-    0 12px 30px rgba(0, 0, 0, 0.18),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.06);
-  backdrop-filter: blur(18px) saturate(120%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
   font-size: 0.88rem;
   font-weight: 560;
 }
@@ -689,10 +659,9 @@ button {
   color: rgba(255, 255, 255, 0.94);
   padding: 14px 17px;
   box-shadow:
-    0 18px 44px rgba(0, 0, 0, 0.24),
-    0 6px 16px rgba(0, 0, 0, 0.16),
+    0 12px 30px rgba(0, 0, 0, 0.22),
     inset 0 0 0 1px rgba(255, 255, 255, 0.08),
-    inset 0 1px 0 rgba(255, 255, 255, 0.16);
+    inset 0 1px 0 rgba(255, 255, 255, 0.14);
   user-select: text;
 }
 
@@ -762,17 +731,15 @@ button {
 
 .answer-block {
   max-width: min(96ch, 84%);
-  color: rgba(245, 245, 247, 0.9);
+  color: rgba(245, 245, 247, 0.94);
   border-radius: 28px;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.072), rgba(255, 255, 255, 0.018)),
-    rgba(42, 43, 47, 0.28);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.015)),
+    rgba(44, 45, 49, 0.4);
   box-shadow:
-    0 18px 46px rgba(0, 0, 0, 0.18),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.055),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    0 14px 36px rgba(0, 0, 0, 0.16),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.05);
   padding: 17px 18px 18px;
-  backdrop-filter: blur(18px) saturate(120%);
   user-select: text;
 }
 
@@ -917,7 +884,7 @@ button {
 }
 
 .citation-heading {
-  color: rgba(235, 235, 245, 0.48);
+  color: rgba(235, 235, 245, 0.6);
   font-size: 0.8rem;
   font-weight: 700;
 }
@@ -930,19 +897,14 @@ button {
 
 .citation-pill {
   display: inline-flex;
-  max-width: 260px;
-  min-height: 30px;
+  max-width: min(100%, 340px);
   align-items: center;
   gap: 7px;
-  border-radius: 999px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.015)),
-    rgba(58, 58, 60, 0.46);
-  color: rgba(235, 235, 245, 0.72);
-  padding: 0 10px;
-  box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.045),
-    0 8px 20px rgba(0, 0, 0, 0.12);
+  border-radius: 14px;
+  background: rgba(60, 60, 63, 0.5);
+  color: rgba(235, 235, 245, 0.84);
+  padding: 6px 11px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
   text-decoration: none;
   transition:
     background 160ms ease,
@@ -950,30 +912,24 @@ button {
 }
 
 .citation-pill:hover {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.095), rgba(255, 255, 255, 0.025)),
-    rgba(72, 72, 74, 0.62);
+  background: rgba(74, 74, 78, 0.66);
   color: #ffffff;
-}
-
-.citation-pill span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .citation-index {
   flex: 0 0 auto;
-  border-radius: 999px;
-  padding: 1px 7px;
-  background: rgba(255, 255, 255, 0.08);
-  color: rgba(235, 235, 245, 0.82);
+  align-self: flex-start;
+  border-radius: 7px;
+  padding: 1px 6px;
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(235, 235, 245, 0.86);
   font-size: 0.72rem;
   font-weight: 700;
 }
 
 .citation-owner {
   flex: 0 0 auto;
+  align-self: flex-start;
   color: rgba(188, 232, 197, 0.95);
   font-size: 0.82rem;
   font-weight: 680;
@@ -982,6 +938,14 @@ button {
 .citation-section {
   min-width: 0;
   font-size: 0.82rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.citation-pill svg {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  margin-top: 2px;
 }
 
 .data-footer {
@@ -1013,19 +977,13 @@ button {
 
 .theme-light .chat-surface {
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.26), rgba(255, 255, 255, 0.13) 38%, rgba(255, 255, 255, 0.06)),
-    rgba(255, 255, 255, 0.12);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.1)),
+    rgba(255, 255, 255, 0.14);
   box-shadow:
-    0 34px 100px rgba(14, 20, 31, 0.28),
-    0 2px 0 rgba(255, 255, 255, 0.42),
+    0 28px 80px rgba(14, 20, 31, 0.24),
     inset 0 0 0 1px rgba(255, 255, 255, 0.42),
-    inset 0 1px 0 rgba(255, 255, 255, 0.62),
-    inset 0 -1px 0 rgba(18, 24, 34, 0.08);
-  backdrop-filter: blur(22px) saturate(138%);
-}
-
-.theme-light .chat-surface::before {
-  background: transparent;
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(20px) saturate(132%);
 }
 
 .theme-light .topbar,
@@ -1104,7 +1062,7 @@ button {
 .theme-light .prompt-title,
 .theme-light .citation-heading,
 .theme-light .data-footer {
-  color: rgba(30, 36, 46, 0.68);
+  color: rgba(30, 36, 46, 0.74);
 }
 
 .theme-light .empty-state {
@@ -1113,15 +1071,13 @@ button {
 
 .theme-light .answer-block {
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.58), rgba(255, 255, 255, 0.34)),
-    rgba(255, 255, 255, 0.26);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.62), rgba(255, 255, 255, 0.4)),
+    rgba(255, 255, 255, 0.34);
   color: rgba(17, 21, 29, 0.94);
   box-shadow:
-    0 20px 50px rgba(18, 24, 34, 0.15),
-    0 6px 20px rgba(18, 24, 34, 0.09),
+    0 16px 40px rgba(18, 24, 34, 0.13),
     inset 0 0 0 1px rgba(38, 48, 64, 0.07),
-    inset 0 1px 0 rgba(255, 255, 255, 0.68);
-  backdrop-filter: blur(18px) saturate(132%);
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 
 .theme-light .question-row {
@@ -1130,10 +1086,9 @@ button {
     rgba(255, 255, 255, 0.38);
   color: rgba(17, 21, 29, 0.94);
   box-shadow:
-    0 18px 42px rgba(18, 24, 34, 0.16),
-    0 6px 16px rgba(18, 24, 34, 0.08),
+    0 12px 30px rgba(18, 24, 34, 0.14),
     inset 0 0 0 1px rgba(38, 48, 64, 0.08),
-    inset 0 1px 0 rgba(255, 255, 255, 0.7);
+    inset 0 1px 0 rgba(255, 255, 255, 0.68);
 }
 
 .theme-light .question-row .speaker-label {
@@ -1154,13 +1109,12 @@ button {
 .theme-light .citation-pill,
 .theme-light .thinking-row {
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.68), rgba(255, 255, 255, 0.28)),
-    rgba(255, 255, 255, 0.3);
-  color: rgba(31, 35, 43, 0.78);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0.34)),
+    rgba(255, 255, 255, 0.36);
+  color: rgba(31, 35, 43, 0.82);
   box-shadow:
-    inset 0 0 0 1px rgba(36, 45, 60, 0.07),
-    inset 0 1px 0 rgba(255, 255, 255, 0.72),
-    0 12px 28px rgba(18, 24, 34, 0.12);
+    inset 0 0 0 1px rgba(36, 45, 60, 0.08),
+    0 8px 20px rgba(18, 24, 34, 0.1);
 }
 
 .theme-light .example-button:hover,
@@ -1178,27 +1132,22 @@ button {
 
 .theme-light .composer {
   background:
-    radial-gradient(circle at 20% 0, rgba(255, 255, 255, 0.72), transparent 17rem),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.34)),
-    rgba(255, 255, 255, 0.38);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.74), rgba(255, 255, 255, 0.4)),
+    rgba(255, 255, 255, 0.4);
   box-shadow:
-    0 18px 50px rgba(18, 24, 34, 0.18),
-    0 8px 22px rgba(18, 24, 34, 0.1),
+    0 14px 38px rgba(18, 24, 34, 0.15),
     inset 0 0 0 1px rgba(38, 48, 64, 0.08),
     inset 0 1px 0 rgba(255, 255, 255, 0.72);
 }
 
 .theme-light .composer:focus-within {
   background:
-    radial-gradient(circle at 20% 0, rgba(255, 255, 255, 0.82), transparent 18rem),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0.42)),
-    rgba(255, 255, 255, 0.45);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.84), rgba(255, 255, 255, 0.46)),
+    rgba(255, 255, 255, 0.46);
   box-shadow:
-    0 22px 62px rgba(18, 24, 34, 0.2),
-    0 0 0 1px rgba(35, 102, 64, 0.18),
-    0 0 34px rgba(35, 102, 64, 0.07),
-    inset 0 0 0 1px rgba(38, 48, 64, 0.08),
-    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+    0 18px 48px rgba(18, 24, 34, 0.18),
+    0 0 0 1px rgba(35, 102, 64, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.78);
 }
 
 .theme-light .composer-input {
