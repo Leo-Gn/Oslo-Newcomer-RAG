@@ -555,8 +555,9 @@ def _build_prompt(
         "documents, conditions, or alternatives. Put a blank line between paragraphs or bullet groups. "
         "For Norwegian answers, use short sentences and avoid packing several conditions into one sentence. "
         "Avoid one dense paragraph. Do not use Markdown bold, tables, or headings. "
-        "Every factual sentence about public rules, documents, dates, fees, services, or procedures "
-        "must include a source marker like [S1]. "
+        "Support factual statements about public rules, documents, dates, fees, services, or procedures "
+        "with a source marker like [S1], and cite each source you actually use. You do not need to repeat "
+        "the same marker on every sentence; one marker per paragraph or bullet is enough. "
         "Return only JSON with keys: answer, refusal."
     )
     user = (
